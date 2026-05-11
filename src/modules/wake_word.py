@@ -91,7 +91,10 @@ class WakeWordDetector:
 
         # Load OpenWakeWord model
         from openwakeword.model import Model as OWWModel
-        self._model = OWWModel(wakeword_models=[self.model_name])
+        self._model = OWWModel(
+            wakeword_models=[self.model_name],
+            inference_framework="onnx",
+        )
         logger.info("OpenWakeWord model loaded: %s", self.model_name)
 
         # Open PyAudio stream
