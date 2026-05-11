@@ -194,11 +194,8 @@ class WakeWordDetector:
                 continue
 
             try:
-                # Convert to float32 for OpenWakeWord
-                audio_f32 = audio_chunk.astype(np.float32) / 32768.0
-
-                # Run prediction
-                prediction = self._model.predict(audio_f32)
+                # OpenWakeWord expects 16-bit PCM integer arrays
+                prediction = self._model.predict(audio_chunk)
 
                 # Check confidence for our wake word
                 confidence = prediction.get(self.model_name, 0.0)
