@@ -50,5 +50,26 @@
 - Brain interface: Working (model not yet downloaded) ✅
 
 ### Phi-3.5-mini Download
-- Status: PENDING (run `make download-model`)
-- Expected size: ~2.2 GB
+- Status: ✅ COMPLETE
+- Model: `mlx-community/Phi-3.5-mini-instruct-4bit`
+- Size on disk: 2.00 GB
+- Load time: 1.8s (cold), 2.8s (benchmark)
+- Inference: 2.0s for short prompt ✅
+
+### Memory Benchmark Results
+| Component | RSS (MB) | Notes |
+|-----------|----------|-------|
+| Baseline (Python) | 16.6 | Minimal |
+| + Memory Manager | 20.4 | +3.8 MB |
+| + Phi-3.5-mini | 471.3 | +450.8 MB (model in unified memory) |
+| **Total** | **471.3** | **Budget: 3,500 MB ✅** |
+
+- System before: 72.5% used, 2.2 GB available
+- System after: 82.1% used, 1.4 GB available
+- Pressure: WARNING (expected with IDE running)
+- Model weights reside in macOS unified memory (~2.2 GB), not Python RSS
+
+### SwiftBar
+- Status: ✅ Installed (v2.0.1)
+- Plugin: `~/.swiftbar/friday.5s.sh`
+- Shows: 🤖 icon + memory/status info
