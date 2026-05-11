@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+
+# Secrets
+.env
+*.pkl
+*.pem
+
+# Models (too large for Git)
+models/phi-3.5-mini-4bit/
+models/distil-whisper-small/
+models/piper-tts/
+
+# Data
+data/faces/*.pkl
+data/memory/*.db
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/
+
+# Test
+.pytest_cache/

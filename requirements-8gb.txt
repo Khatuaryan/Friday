@@ -1,0 +1,54 @@
+# =============================================
+# F.R.I.D.A.Y. v2 — 8GB-Optimized Dependencies
+# =============================================
+# Target: MacBook Air M2 2023, 8GB RAM
+# Total FRIDAY budget: 3.5GB
+# =============================================
+
+# Core AI - MLX ecosystem (Apple Silicon optimized)
+mlx>=0.19.0
+mlx-lm>=0.19.0
+huggingface-hub>=0.24.0
+
+# Voice - Lightweight versions only
+mlx-whisper>=0.4.0          # Distil-Whisper via MLX (Phase 3)
+openwakeword>=0.6.0         # Wake word detection (Phase 1)
+pyaudio>=0.2.14             # Microphone access
+sounddevice>=0.5.0          # Audio playback
+piper-tts>=1.2.0            # Piper TTS (Phase 3)
+webrtcvad>=2.0.10           # Voice Activity Detection
+
+# Vision - Apple frameworks via PyObjC (0MB overhead)
+pyobjc-core>=10.3
+pyobjc-framework-Vision>=10.3
+pyobjc-framework-Quartz>=10.3
+pyobjc-framework-AVFoundation>=10.3
+
+# Memory & Storage - Minimal footprint
+aiosqlite>=0.20.0           # Async SQLite
+sqlite-vec>=0.1.0           # Vector similarity search (Phase 4)
+
+# Tools & Utils
+httpx>=0.27.0               # Async HTTP client
+python-dotenv>=1.0.1        # .env loading
+pyyaml>=6.0.2               # Config files
+psutil>=6.0.0               # Memory/CPU monitoring
+pydantic>=2.7.0             # Settings validation
+pydantic-settings>=2.3.0    # Env-based settings
+
+# Testing
+pytest>=8.3.0
+pytest-asyncio>=0.23.0
+
+# =============================================
+# EXPLICITLY EXCLUDED (too heavy for 8GB):
+# =============================================
+# - torch/pytorch      → use MLX instead
+# - transformers       → use mlx-lm instead
+# - chromadb           → use sqlite-vec instead
+# - opencv-python      → use Vision framework
+# - dlib/face_recognition → use Vision framework
+# - PyQt6             → use SwiftBar instead
+# - milvus/pymilvus   → use sqlite-vec instead
+# - langchain         → direct MLX inference
+# - nemoguardrails    → custom lightweight guardrails

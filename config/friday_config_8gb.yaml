@@ -1,0 +1,60 @@
+# =============================================
+# F.R.I.D.A.Y. v2 — 8GB System Configuration
+# =============================================
+
+hardware:
+  total_ram_gb: 8.0
+  friday_budget_gb: 3.5
+  warning_threshold: 0.75   # 75% system RAM = warning
+  critical_threshold: 0.85  # 85% system RAM = critical
+
+models:
+  llm:
+    name: "Phi-3.5-mini-instruct-4bit"
+    repo_id: "mlx-community/Phi-3.5-mini-instruct-4bit"
+    path: "models/phi-3.5-mini-4bit"
+    max_tokens: 1024
+    temperature: 0.7
+    context_window: 4096
+    memory_gb: 2.2
+
+  stt:
+    name: "distil-whisper-small"
+    repo_id: "mlx-community/distil-whisper-small.en"
+    path: "models/distil-whisper-small"
+    memory_gb: 0.6
+
+  tts:
+    name: "piper-tts"
+    voice: "en_US-lessac-medium"
+    path: "models/piper-tts"
+    memory_gb: 0.15
+
+  wake_word:
+    model: "hey_mycroft"    # Placeholder until custom "FRIDAY" trained
+    sensitivity: 0.5
+    memory_gb: 0.05
+
+face:
+  use_vision_framework: true
+  use_facenet: false         # Vision landmarks sufficient for 1-to-1
+  threshold: 0.75
+  timeout_seconds: 3
+  min_enrollment_photos: 20
+  encodings_path: "data/faces/boss_vision.pkl"
+
+memory:
+  enable_monitoring: true
+  check_interval_seconds: 30
+  auto_cleanup: true
+  max_conversation_turns: 10  # Limited for 8GB
+  max_rag_results: 5
+
+context:
+  max_history_turns: 10
+  system_prompt_max_tokens: 500
+
+logging:
+  level: "INFO"
+  file: "logs/friday.log"
+  max_size_mb: 10

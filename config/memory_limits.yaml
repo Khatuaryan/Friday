@@ -1,0 +1,44 @@
+# =============================================
+# Memory Limits for 8GB System
+# =============================================
+
+system:
+  total_ram_gb: 8.0
+  macos_reserved_gb: 2.5     # macOS + system services
+  user_apps_gb: 2.0          # Room for light browsing
+  friday_budget_gb: 3.5      # Our allocation
+
+friday_components:
+  python_runtime_mb: 150
+  wake_word_mb: 50
+  phi_3_5_mini_mb: 2200
+  distil_whisper_mb: 600     # Phase 3
+  piper_tts_mb: 150          # Phase 3
+  minilm_embeddings_mb: 80   # Phase 4
+  sqlite_vec_mb: 100         # Phase 4
+  misc_buffers_mb: 170
+  total_mb: 3500
+
+pressure_thresholds:
+  normal:
+    max_system_percent: 75
+    actions: []
+  warning:
+    max_system_percent: 85
+    actions:
+      - reduce_context_window
+      - clear_mlx_cache
+      - log_warning
+  critical:
+    max_system_percent: 90
+    actions:
+      - emergency_cache_clear
+      - reduce_max_tokens
+      - warn_user
+      - skip_nonessential
+
+cleanup_order:
+  - mlx_metal_cache          # mx.metal.clear_cache()
+  - conversation_history     # Trim to last 5 turns
+  - rag_cache                # Clear embedding cache
+  - audio_buffers            # Flush playback buffers
