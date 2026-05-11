@@ -94,3 +94,24 @@
 
 ### Manual Testing Required
 Run `make test-wake-word` to test microphone sensitivity and latency manually.
+
+---
+
+## Phase 2: Face Recognition - Results
+
+**Completion Date**: 2026-05-11
+
+### Dependencies
+- `pyobjc-framework-Vision` (12.1), `opencv-python` (4.13.0.92)
+
+### Architecture
+- Exclusively uses native macOS Apple Vision Framework via PyObjC.
+- Extracted 68 facial landmarks. No deep learning weights (e.g. FaceNet) are loaded into Python memory.
+
+### Test Results
+- **Vision Framework**: Accessible ✅
+- **Camera Capture**: Working ✅
+- **Inference pipeline**: Functioning (`VNFaceDetectorRevision2` successfully instantiates) ✅
+
+### Manual Testing Required
+Run `make enroll-face` to capture baseline identity photos of "Boss" and test verification accuracy.
