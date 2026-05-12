@@ -47,6 +47,9 @@ test-wake-word:
 enroll-face:
 	.venv/bin/python scripts/enroll_face_vision.py
 
+test-pipeline:
+	.venv/bin/python scripts/test_pipeline.py
+
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true

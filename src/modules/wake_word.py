@@ -42,7 +42,7 @@ class WakeWordDetector:
 
     def __init__(
         self,
-        model_name: str = "hey_mycroft",
+        model_name: str = "hey_jarvis",
         sensitivity: float = 0.5,
         callback: Optional[Callable[[], None]] = None,
     ) -> None:
