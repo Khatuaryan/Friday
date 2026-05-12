@@ -10,12 +10,14 @@ help:
 	@echo "  make benchmark-memory  Run RAM benchmark"
 	@echo "  make monitor         Live memory pressure monitor"
 	@echo "  make test            Run all tests"
-	@echo "  make test-wake-word  Manual wake word test"
-	@echo "  make enroll-face     Enroll Boss face"
+	@echo "  make test-wake-word  Manual wake word unit test"
+	@echo "  make test-face       Manual face recognition unit test"
+	@echo "  make test-pipeline   Integration test (Wake Word + Face)"
+	@echo "  make enroll-face     Enroll Boss face (Setup)"
 	@echo "  make clean           Remove caches"
 
 install:
-	bash scripts/install.sh
+	bash scripts/setup/install.sh
 
 verify-env:
 	@echo "Verifying 8GB environment..."
@@ -30,7 +32,7 @@ verify-env:
 	@echo ""
 
 download-model:
-	.venv/bin/python scripts/download_models.py
+	.venv/bin/python scripts/setup/download_models.py
 
 benchmark-memory:
 	.venv/bin/python scripts/benchmark_memory.py
@@ -42,13 +44,16 @@ test:
 	.venv/bin/pytest tests/ -v
 
 test-wake-word:
-	.venv/bin/python scripts/test_wake_word.py
+	.venv/bin/python tests/unit/manual_test_wake_word.py
+
+test-face:
+	.venv/bin/python tests/unit/manual_test_face_recognition.py
 
 enroll-face:
-	.venv/bin/python scripts/enroll_face_vision.py
+	.venv/bin/python scripts/setup/enroll_face.py
 
 test-pipeline:
-	.venv/bin/python scripts/test_pipeline.py
+	.venv/bin/python tests/integration/pipeline_v1_activation.py
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true

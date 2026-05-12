@@ -4,7 +4,7 @@ import time
 import logging
 
 # Ensure project root is in path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from src.core.activation_handler import ActivationHandler, ActivationState
 
@@ -49,7 +49,7 @@ if __name__ == "__main__":
     print("Ensure you are visible to the camera when triggering.")
     print("Press Ctrl+C to stop.\n")
 
-    boss_encodings = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "faces", "boss_vision.pkl")
+    boss_encodings = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "faces", "boss_vision.pkl")
     
     if not os.path.exists(boss_encodings):
         logger.error(f"Could not find boss encodings at {boss_encodings}")
