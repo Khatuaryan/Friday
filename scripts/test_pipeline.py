@@ -6,7 +6,7 @@ import logging
 # Ensure project root is in path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.core.activation_handler import ActivationHandler
+from src.core.activation_handler import ActivationHandler, ActivationState
 
 # Configure logging to see what is happening
 logging.basicConfig(
@@ -29,7 +29,7 @@ def on_boss_verified():
     # Normally we would transition to listening for a voice command here
     # For this test, we'll just wait a bit and go back to idle listening
     time.sleep(2)
-    handler._set_state("listening") # Reset state for the test loop
+    handler._set_state(ActivationState.LISTENING) # Reset state for the test loop
     logger.info("System reset. Listening for wake word again...")
 
 def on_stranger():
