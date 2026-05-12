@@ -28,6 +28,10 @@ def on_detected():
 
 
 def main():
+    # Set wake_word module logger to DEBUG to show near-misses
+    import logging
+    logging.getLogger("friday.wake_word").setLevel(logging.DEBUG)
+
     print("\n" + "=" * 50)
     print("Wake Word Detection Test")
     print("=" * 50)
