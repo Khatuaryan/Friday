@@ -176,7 +176,7 @@ class WakeWordDetector:
         import pyaudio
 
         try:
-            audio_chunk = np.frombuffer(in_data, dtype=DTYPE)
+            audio_chunk = np.frombuffer(in_data, dtype=DTYPE).copy()
             self._audio_queue.put_nowait(audio_chunk)
         except queue.Full:
             pass  # Drop frames under heavy load
