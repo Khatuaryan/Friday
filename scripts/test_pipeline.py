@@ -20,7 +20,7 @@ logger = logging.getLogger("test_pipeline")
 
 def say(text):
     """Fallback text-to-speech using macOS native 'say' command."""
-    os.system(f"say '{text}'")
+    os.system(f'say "{text}"')
 
 def on_boss_verified():
     logger.info("CALLBACK: Boss has been verified!")
