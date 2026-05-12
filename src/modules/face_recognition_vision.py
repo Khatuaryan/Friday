@@ -267,8 +267,9 @@ class VisionFaceRecognizer:
 
             # Extract normalized point coordinates
             points = []
+            norm_pts = all_points.normalizedPoints()
             for i in range(point_count):
-                pt = all_points.pointAtIndex_(i)
+                pt = norm_pts[i]
                 points.append([pt.x, pt.y])
 
             landmarks = np.array(points, dtype=np.float64)
