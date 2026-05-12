@@ -2,23 +2,45 @@
 
 Privacy-first, local-only AI assistant for macOS optimized for 8GB RAM MacBook Air.
 
-## Quick Start
+## 📁 Project Structure
+
+- **`src/core/`**: Orchestrators (Activation Handler, Brain, Prompts)
+- **`src/memory/`**: Memory Management & Pressure Monitoring
+- **`src/modules/audio/`**: Wake Word, STT, TTS
+- **`src/modules/vision/`**: Face Recognition
+- **`tests/`**: Automated (unit) and Manual (unit/integration) tests
+- **`scripts/setup/`**: One-time setup operations (Enrollment, Downloads)
+
+## 🚀 Quick Start
 
 ```bash
-# 1. Install environment
+# 1. Install environment & Download Phi-3.5-mini (2.2 GB)
 make install
-
-# 2. Download Phi-3.5-mini (2.2 GB)
 make download-model
+
+# 2. Enroll your face (One-time)
+make enroll-face
 
 # 3. Verify everything works
 make verify-env
-
-# 4. Run memory benchmark
 make benchmark-memory
 ```
 
-## Architecture
+## 🧪 Systematic Testing
+
+We use a layered testing approach:
+
+```bash
+# Individual Component Tests (Unit)
+make test-wake-word    # Manual: verify mic hears you
+make test-face         # Manual: verify camera sees you
+make test              # Automated: run all logic tests
+
+# Sequential Integration Tests
+make test-pipeline     # Wake Word -> Face -> TTS loop
+```
+
+## 🏗️ Architecture
 
 | Component | Technology | Memory |
 |-----------|-----------|--------|
@@ -28,35 +50,23 @@ make benchmark-memory
 | TTS | Piper TTS | 150 MB |
 | Face | Apple Vision Framework | 0 MB |
 | Memory | SQLite-vec + MiniLM | 200 MB |
-| UI | SwiftBar | 20 MB |
 | **Total** | | **~3.2 GB** |
 
-## Requirements
+## 🛠️ Requirements
 
 - macOS 13+ (Ventura or later)
 - Apple Silicon (M1/M2/M3)
 - 8 GB RAM minimum
-- 30 GB free disk space
 - Python 3.11
 
-## Development
+## 📊 Monitoring
 
 ```bash
-make test              # Run all tests
-make benchmark-memory  # RAM benchmark
-make monitor           # Live memory monitor
-make enroll-face       # Enroll Boss face
-make clean             # Clean caches
+make monitor           # Live memory pressure monitor
+make benchmark-memory  # Deep RAM analysis
+make clean             # Remove caches
 ```
 
-## Memory Budget
-
-Total system: 8 GB
-- macOS reserved: ~2.5 GB
-- User apps: ~2.0 GB
-- **FRIDAY budget: 3.5 GB**
-- Current usage: ~3.2 GB ✅
-
-## License
+## 📄 License
 
 Private — Personal use only.

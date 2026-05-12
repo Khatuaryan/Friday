@@ -3,25 +3,22 @@
 ## 🎯 Mission Statement Alignment
 This phase establishes the "Privacy-First" and "Apple-Native" foundations of Project F.R.I.D.A.Y. by implementing a low-latency activation loop that uses local processing exclusively.
 
-## 🏗️ Technical Architecture
+## 🏗️ Technical Architecture (Modular)
 
-### 1. Voice Activation (OpenWakeWord)
-- **Model**: `hey_mycroft` (placeholder for `FRIDAY`) running via ONNX.
-- **Input**: 16kHz Mono PCM (16-bit) via PyAudio.
-- **Optimization**: Thread-safe audio queuing with mandatory memory-copying to prevent CoreAudio buffer corruption in asynchronous loops.
-- **Performance**: ~9% CPU usage on a single M2 core.
+### 1. Voice Activation (`src/modules/audio/`)
+- **Wake Word**: `wake_word.py` (OpenWakeWord with `hey_mycroft` placeholder).
+- **Optimization**: Thread-safe audio queuing with mandatory memory-copying to prevent CoreAudio buffer corruption.
+- **Unit Test**: `tests/unit/manual_test_wake_word.py`.
 
-### 2. Identity Verification (Apple Vision)
-- **Framework**: Native macOS Vision Framework (`VNDetectFaceLandmarksRequest`).
-- **Logic**: 68-point facial landmark extraction and 1-to-1 similarity comparison against enrolled "Boss" encodings.
-- **Hardware Acceleration**: GPU-accelerated face detection with near-zero memory overhead.
-- **Camera Handling**: Automatic discovery of "FaceTime HD Camera" to prioritize built-in hardware over Continuity Camera (iPhone).
+### 2. Identity Verification (`src/modules/vision/`)
+- **Engine**: `face_recognizer.py` (Native Apple Vision Framework).
+- **Camera Discovery**: Automated `AVFoundation` logic to prefer FaceTime HD over Continuity Camera.
+- **Unit Test**: `tests/unit/manual_test_face_recognition.py`.
 
-### 3. Pipeline Integration
-The system follows a strict state-machine flow:
-1. **LISTENING**: Background thread monitors audio for the wake word.
-2. **VERIFYING**: Upon detection, the camera is activated for a 3-5 second window.
-3. **READY**: If "Boss" is verified, the system triggers a TTS greeting and moves to Command mode.
+### 3. Pipeline Integration (`src/core/`)
+- **Orchestrator**: `activation_handler.py`.
+- **Flow**: `LISTENING` (Audio) → `VERIFYING` (Face) → `READY` (Greet).
+- **Integration Test**: `tests/integration/pipeline_v1_activation.py`.
 
 ## 🛡️ Challenges Overcome
 
