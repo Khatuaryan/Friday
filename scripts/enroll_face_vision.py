@@ -36,7 +36,7 @@ def test_face_detection(camera_index: Optional[int] = None):
         return False
 
     try:
-        from src.modules.face_recognition_vision import VisionFaceRecognizer
+        from src.modules.vision.face_recognizer import VisionFaceRecognizer
         import cv2
         
         idx = camera_index if camera_index is not None else VisionFaceRecognizer.get_default_camera_index()
@@ -87,7 +87,7 @@ def enroll():
 
     input("\nPress ENTER to start...")
 
-    from src.modules.face_recognition_vision import VisionFaceRecognizer
+    from src.modules.vision.face_recognizer import VisionFaceRecognizer
 
     save_path = PROJECT_ROOT / "data" / "faces" / "boss_vision.pkl"
     rec = VisionFaceRecognizer(boss_encodings_path=str(save_path))

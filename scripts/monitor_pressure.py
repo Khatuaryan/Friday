@@ -26,7 +26,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 def monitor(interval: float = 10.0):
     """Continuously monitor memory pressure."""
-    from src.core.memory_manager import memory_manager
+    from src.memory.manager import memory_manager
 
     print("\n" + "=" * 60)
     print("F.R.I.D.A.Y. Memory Pressure Monitor")

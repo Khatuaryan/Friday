@@ -61,7 +61,7 @@ class FridayBrain:
             MemoryError: If insufficient RAM.
             FileNotFoundError: If model files missing.
         """
-        from src.core.memory_manager import memory_manager
+        from src.memory.manager import memory_manager
 
         # Pre-flight memory check
         if not memory_manager.check_can_load_model(2.2):
@@ -155,7 +155,7 @@ class FridayBrain:
             <|user|>...<|end|>
             <|assistant|>
         """
-        from src.core.system_prompts import DEFAULT_SYSTEM_PROMPT
+        from src.core.prompts import DEFAULT_SYSTEM_PROMPT
 
         sys_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
 

@@ -1,7 +1,7 @@
 """Unit tests for memory manager."""
 
 import pytest
-from src.core.memory_manager import MemoryManager, PressureLevel, MemoryStatus
+from src.memory.manager import MemoryManager, PressureLevel, MemoryStatus
 
 
 class TestMemoryManager:

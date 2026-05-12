@@ -60,7 +60,7 @@ def benchmark():
     print(f"\n1. Baseline:        {baseline:>8.1f} MB")
 
     # ── 2. Memory Manager ──
-    from src.core.memory_manager import memory_manager
+    from src.memory.manager import memory_manager
     status = memory_manager.get_status()
     after_mm = get_memory_mb()
     results.append(("+ Memory Manager", after_mm))

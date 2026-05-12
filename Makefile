@@ -24,7 +24,7 @@ verify-env:
 	@.venv/bin/python -c "import mlx.core as mx; print(f'✅ MLX {mx.__version__}')" 2>/dev/null || echo "❌ MLX missing"
 	@.venv/bin/python -c "import psutil; print(f'✅ psutil {psutil.__version__}')" 2>/dev/null || echo "❌ psutil missing"
 	@.venv/bin/python -c "import yaml; print('✅ PyYAML')" 2>/dev/null || echo "❌ PyYAML missing"
-	@.venv/bin/python -c "from src.core.memory_manager import memory_manager; s=memory_manager.get_status(); print(f'✅ MemoryManager: {s}')" 2>/dev/null || echo "❌ MemoryManager broken"
+	@.venv/bin/python -c "from src.memory.manager import memory_manager; s=memory_manager.get_status(); print(f'✅ MemoryManager: {s}')" 2>/dev/null || echo "❌ MemoryManager broken"
 	@test -d models/phi-3.5-mini-4bit && ls models/phi-3.5-mini-4bit/*.safetensors >/dev/null 2>&1 && echo "✅ Phi-3.5-mini downloaded" || echo "⏭️  Phi-3.5-mini not yet downloaded"
 	@sysctl hw.memsize | awk '{printf "ℹ️  RAM: %.1f GB\n", $$2/1024/1024/1024}'
 	@echo ""

@@ -71,17 +71,17 @@ class ActivationHandler:
 
     def start(self) -> None:
         """Start the activation pipeline (wake word listening)."""
-        from src.core.memory_manager import memory_manager
+        from src.memory.manager import memory_manager
         memory_manager.log_usage()
 
         # Initialize wake word detector
-        from src.modules.wake_word import WakeWordDetector
+        from src.modules.audio.wake_word import WakeWordDetector
         self._wake_word = WakeWordDetector(
             callback=self._on_wake_word,
         )
 
         # Initialize face recognizer (0 MB overhead — native Vision)
-        from src.modules.face_recognition_vision import VisionFaceRecognizer
+        from src.modules.vision.face_recognizer import VisionFaceRecognizer
         self._face_recognizer = VisionFaceRecognizer(
             boss_encodings_path=self.boss_encodings_path,
             camera_index=self.camera_index,

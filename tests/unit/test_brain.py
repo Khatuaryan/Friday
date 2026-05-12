@@ -2,7 +2,7 @@
 
 import pytest
 from unittest.mock import patch, MagicMock
-from src.core.friday_brain import FridayBrain
+from src.core.brain import FridayBrain
 
 
 class TestFridayBrain:

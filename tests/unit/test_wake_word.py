@@ -2,7 +2,7 @@
 
 import pytest
 from unittest.mock import Mock
-from src.modules.wake_word import WakeWordDetector
+from src.modules.audio.wake_word import WakeWordDetector
 
 
 class TestWakeWordDetector:

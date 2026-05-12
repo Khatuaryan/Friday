@@ -81,7 +81,7 @@ class WakeWordDetector:
             return
 
         # Memory check
-        from src.core.memory_manager import memory_manager, PressureLevel
+        from src.memory.manager import memory_manager, PressureLevel
         status = memory_manager.get_status()
         if status.pressure_level == PressureLevel.CRITICAL:
             raise MemoryError(

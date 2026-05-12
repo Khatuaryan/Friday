@@ -59,7 +59,7 @@ class MemoryManager:
     Monitors and enforces memory limits for an 8 GB system.
 
     Usage:
-        from src.core.memory_manager import memory_manager
+        from src.memory.manager import memory_manager
 
         status = memory_manager.get_status()
         if status.pressure_level == PressureLevel.CRITICAL:
