@@ -42,7 +42,7 @@ class WakeWordDetector:
 
     def __init__(
         self,
-        model_name: str = "hey_jarvis",
+        model_name: str = "hey_mycroft",
         sensitivity: float = 0.5,
         callback: Optional[Callable[[], None]] = None,
     ) -> None:
@@ -199,10 +199,6 @@ class WakeWordDetector:
 
                 # Check confidence for our wake word
                 confidence = prediction.get(self.model_name, 0.0)
-
-                # Log near-misses for debugging
-                if confidence > 0.1 and confidence <= self.sensitivity:
-                    logger.debug("Wake word near miss: %.3f (threshold: %.2f)", confidence, self.sensitivity)
 
                 if confidence > self.sensitivity:
                     now = time.time()

@@ -45,7 +45,7 @@ if __name__ == "__main__":
     print("F.R.I.D.A.Y. Pipeline Integration Test")
     print("Wake Word -> Vision Recognition -> Text To Speech")
     print("=" * 60)
-    print("\nSay 'Hey Jarvis' to trigger the pipeline.")
+    print("\nSay 'Hey Mycroft' to trigger the pipeline.")
     print("Ensure you are visible to the camera when triggering.")
     print("Press Ctrl+C to stop.\n")
 
