@@ -56,11 +56,17 @@ if __name__ == "__main__":
         logger.error("Please run 'make enroll-face' first!")
         sys.exit(1)
 
+    import argparse
+    parser = argparse.ArgumentParser(description="F.R.I.D.A.Y. Pipeline Test")
+    parser.add_argument("--camera", type=int, default=None, help="Camera device index")
+    args = parser.parse_args()
+
     handler = ActivationHandler(
         boss_encodings_path=boss_encodings,
         on_boss_verified=on_boss_verified,
         on_stranger=on_stranger,
-        on_no_face=on_no_face
+        on_no_face=on_no_face,
+        camera_index=args.camera
     )
 
     try:

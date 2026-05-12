@@ -42,25 +42,71 @@ class VisionFaceRecognizer:
         boss_encodings_path: str | Path = "data/faces/boss_vision.pkl",
         threshold: float = 0.75,
         timeout: int = 3,
+        camera_index: Optional[int] = None,
     ) -> None:
         """
         Args:
             boss_encodings_path: Path to pickled boss landmark observations.
             threshold: Similarity threshold (0.0–1.0). Higher = stricter.
             timeout: Camera timeout in seconds.
+            camera_index: Optional override for camera device index.
         """
         self.boss_encodings_path = Path(boss_encodings_path)
         self.threshold = threshold
         self.timeout = timeout
+
+        # Determine camera index: provided > built-in > 0
+        if camera_index is not None:
+            self.camera_index = camera_index
+        else:
+            self.camera_index = self.get_default_camera_index()
 
         # Load boss encodings if they exist
         self._boss_landmarks: list[np.ndarray] = []
         if self.boss_encodings_path.exists():
             self._load_boss_encodings()
 
-    def verify_identity(self, camera_index: int = 0) -> Tuple[str, Optional[str]]:
+    @staticmethod
+    def get_default_camera_index() -> int:
+        """
+        Attempts to find the index of the built-in FaceTime HD Camera.
+        Returns 0 if not found or on error.
+        """
+        try:
+            import AVFoundation
+            discovery_session = AVFoundation.AVCaptureDeviceDiscoverySession.discoverySessionWithDeviceTypes_mediaType_position_(
+                [
+                    AVFoundation.AVCaptureDeviceTypeBuiltInWideAngleCamera,
+                    AVFoundation.AVCaptureDeviceTypeExternalUnknown,
+                    AVFoundation.AVCaptureDeviceTypeContinuityCamera
+                ],
+                AVFoundation.AVMediaTypeVideo,
+                AVFoundation.AVCaptureDevicePositionUnspecified
+            )
+            devices = discovery_session.devices()
+
+            # Prefer built-in FaceTime HD Camera
+            for i, device in enumerate(devices):
+                name = device.localizedName().lower()
+                if "facetime" in name or "built-in" in name:
+                    logger.info("Found built-in camera: %s at index %d", device.localizedName(), i)
+                    return i
+
+            # Fallback to index 0
+            if devices:
+                logger.info("Using default camera: %s at index 0", devices[0].localizedName())
+            return 0
+
+        except Exception as e:
+            logger.debug("Camera discovery failed: %s", e)
+            return 0
+
+    def verify_identity(self, camera_index: Optional[int] = None) -> Tuple[str, Optional[str]]:
         """
         Capture from camera and verify identity against enrolled Boss.
+
+        Args:
+            camera_index: Optional override for camera device index.
 
         Returns:
             ("boss", "Boss")    — Recognized as Boss
@@ -69,9 +115,10 @@ class VisionFaceRecognizer:
         """
         import cv2
 
-        cap = cv2.VideoCapture(camera_index)
+        idx = camera_index if camera_index is not None else self.camera_index
+        cap = cv2.VideoCapture(idx)
         if not cap.isOpened():
-            logger.error("Cannot open camera %d", camera_index)
+            logger.error("Cannot open camera %d", idx)
             return ("no_face", None)
 
         try:

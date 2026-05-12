@@ -50,11 +50,13 @@ class ActivationHandler:
         on_boss_verified: Callable[[], None],
         on_stranger: Optional[Callable[[], None]] = None,
         on_no_face: Optional[Callable[[], None]] = None,
+        camera_index: Optional[int] = None,
     ) -> None:
         self.boss_encodings_path = boss_encodings_path
         self.on_boss_verified = on_boss_verified
         self.on_stranger = on_stranger
         self.on_no_face = on_no_face
+        self.camera_index = camera_index
 
         self._state = ActivationState.IDLE
         self._lock = threading.Lock()
@@ -82,6 +84,7 @@ class ActivationHandler:
         from src.modules.face_recognition_vision import VisionFaceRecognizer
         self._face_recognizer = VisionFaceRecognizer(
             boss_encodings_path=self.boss_encodings_path,
+            camera_index=self.camera_index,
         )
 
         self._wake_word.start()
@@ -107,7 +110,9 @@ class ActivationHandler:
         start = time.perf_counter()
 
         try:
-            identity, name = self._face_recognizer.verify_identity()
+            identity, name = self._face_recognizer.verify_identity(
+                camera_index=self.camera_index
+            )
             latency = time.perf_counter() - start
 
             if identity == "boss":

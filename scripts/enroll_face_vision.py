@@ -23,7 +23,7 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 
-def test_face_detection():
+def test_face_detection(camera_index: Optional[int] = None):
     """Quick test: can Vision Framework detect a face?"""
     print("\n--- Testing Vision Framework Face Detection ---")
 
@@ -36,10 +36,13 @@ def test_face_detection():
         return False
 
     try:
+        from src.modules.face_recognition_vision import VisionFaceRecognizer
         import cv2
-        cap = cv2.VideoCapture(0)
+        
+        idx = camera_index if camera_index is not None else VisionFaceRecognizer.get_default_camera_index()
+        cap = cv2.VideoCapture(idx)
         if not cap.isOpened():
-            print("❌ Cannot open camera")
+            print(f"❌ Cannot open camera {idx}")
             return False
 
         ret, frame = cap.read()
@@ -51,7 +54,6 @@ def test_face_detection():
 
         print("✅ Camera capture working")
 
-        from src.modules.face_recognition_vision import VisionFaceRecognizer
         rec = VisionFaceRecognizer(boss_encodings_path="data/faces/boss_vision.pkl")
 
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -93,6 +95,7 @@ def enroll():
     success = rec.enroll_boss(
         num_photos=args.photos,
         save_path=str(save_path),
+        camera_index=args.camera,
     )
 
     if success:
@@ -105,7 +108,7 @@ def enroll():
         print("Look at the camera...")
         time.sleep(1)
 
-        identity, name = rec.verify_identity()
+        identity, name = rec.verify_identity(camera_index=args.camera)
         print(f"Result: {identity} ({name})")
 
         if identity == "boss":
@@ -130,10 +133,14 @@ if __name__ == "__main__":
         "--test", action="store_true",
         help="Quick test: verify Vision Framework can detect faces",
     )
+    parser.add_argument(
+        "--camera", type=int, default=None,
+        help="Camera device index (default: auto-detect FaceTime HD Camera)",
+    )
     args = parser.parse_args()
 
     if args.test:
-        success = test_face_detection()
+        success = test_face_detection(camera_index=args.camera)
         sys.exit(0 if success else 1)
     else:
         sys.exit(enroll())
