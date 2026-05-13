@@ -1,10 +1,11 @@
 """
-Activation Handler — Coordinates wake word → face verification → command readiness.
+Activation Handler — Coordinates wake word → face verification → voice interaction.
 
 This is the main orchestrator for the activation pipeline:
     1. Wake word detected ("Hey Mycroft" / future "FRIDAY")
     2. Camera activates → Apple Vision verifies Boss identity
-    3. System enters LISTENING state for voice command
+    3. TTS greets Boss → STT listens for voice command
+    4. Voice pipeline processes the command (Brain in Phase 4)
 
 State machine:
     IDLE → LISTENING (wake word) → VERIFYING (face) → READY (command) → IDLE
@@ -27,14 +28,14 @@ class ActivationState(str, Enum):
     LISTENING = "listening"        # Wake word active
     VERIFYING = "verifying"        # Face check in progress
     READY = "ready"                # Boss verified, awaiting command
-    PROCESSING = "processing"      # LLM processing
+    PROCESSING = "processing"      # Voice pipeline active
     SPEAKING = "speaking"          # TTS playing
 
 
 class ActivationHandler:
     """
     Coordinates the activation flow:
-        Wake word → Face verification → Command ready
+        Wake word → Face verification → Voice interaction
 
     Usage:
         handler = ActivationHandler(
@@ -61,9 +62,12 @@ class ActivationHandler:
         self._state = ActivationState.IDLE
         self._lock = threading.Lock()
 
-        # Components (lazy-initialized)
+        # Components (lazy-initialized in start())
         self._wake_word = None
         self._face_recognizer = None
+        self._stt = None
+        self._tts = None
+        self._voice_pipeline = None
 
     @property
     def state(self) -> ActivationState:
@@ -87,6 +91,32 @@ class ActivationHandler:
             camera_index=self.camera_index,
         )
 
+        # Initialize voice pipeline (lazy — STT model loads on first use)
+        from src.modules.audio.stt import SpeechToText
+        from src.modules.audio.tts import TextToSpeech
+        from src.modules.voice_pipeline import VoicePipeline
+
+        self._stt = SpeechToText()
+        self._tts = TextToSpeech()
+
+        # Initialize brain (optional — graceful degradation if model missing)
+        brain = None
+        try:
+            from src.core.brain import FridayBrain
+            brain = FridayBrain()
+            brain.load_model()
+            logger.info("Brain loaded — full voice interaction ready")
+        except (FileNotFoundError, MemoryError) as e:
+            logger.warning("Brain not available (%s) — running without LLM", e)
+        except Exception:
+            logger.exception("Unexpected error loading brain")
+
+        self._voice_pipeline = VoicePipeline(
+            stt=self._stt,
+            tts=self._tts,
+            brain=brain,
+        )
+
         self._wake_word.start()
         self._set_state(ActivationState.LISTENING)
         logger.info("Activation handler started — listening for wake word")
@@ -95,6 +125,8 @@ class ActivationHandler:
         """Stop all activation components."""
         if self._wake_word:
             self._wake_word.stop()
+        if self._tts:
+            self._tts.stop()
         self._set_state(ActivationState.IDLE)
         logger.info("Activation handler stopped")
 
@@ -118,10 +150,14 @@ class ActivationHandler:
             if identity == "boss":
                 logger.info("✅ Boss verified in %.2fs", latency)
                 self._set_state(ActivationState.READY)
-                # Fire callback in separate thread to not block
+
+                # Fire user callback
                 threading.Thread(
                     target=self.on_boss_verified, daemon=True
                 ).start()
+
+                # Start voice interaction
+                self._handle_voice_interaction()
 
             elif identity == "stranger":
                 logger.warning("⛔ Stranger detected (%.2fs)", latency)
@@ -139,9 +175,34 @@ class ActivationHandler:
             logger.exception("Face verification failed")
             self._set_state(ActivationState.LISTENING)
 
+    def _handle_voice_interaction(self) -> None:
+        """Run the voice pipeline after boss verification."""
+        if not self._voice_pipeline:
+            self._set_state(ActivationState.LISTENING)
+            return
+
+        try:
+            self._set_state(ActivationState.SPEAKING)
+            self._tts.speak("How can I help you?", blocking=True)
+
+            self._set_state(ActivationState.PROCESSING)
+            response = self._voice_pipeline.process_voice_command(timeout=10)
+
+            if response:
+                logger.info("Voice command completed successfully")
+            else:
+                self._tts.speak("I didn't hear anything. Try again.", blocking=True)
+
+        except Exception:
+            logger.exception("Voice interaction failed")
+
+        # Return to listening
+        self._set_state(ActivationState.LISTENING)
+
     def _set_state(self, new_state: ActivationState) -> None:
         """Update state with logging."""
         old = self._state
         self._state = new_state
         if old != new_state:
             logger.debug("State: %s → %s", old.value, new_state.value)
+

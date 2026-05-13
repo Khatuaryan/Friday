@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import time
 from pathlib import Path
-from typing import Generator
+from typing import Generator, List, Optional, Tuple
 
 logger = logging.getLogger("friday.brain")
 
@@ -45,6 +45,10 @@ class FridayBrain:
         self._model = None
         self._tokenizer = None
         self._loaded = False
+
+        # Conversation history: list of (user_message, assistant_response) tuples
+        self._conversation_history: List[Tuple[str, str]] = []
+        self._max_history_turns = 10  # Limited for 8GB
 
     @property
     def is_loaded(self) -> bool:
@@ -90,13 +94,19 @@ class FridayBrain:
         memory_manager.log_usage()
         return load_time
 
-    def think(self, user_message: str, system_prompt: str | None = None) -> str:
+    def think(
+        self,
+        user_message: str,
+        system_prompt: str | None = None,
+        add_to_history: bool = True,
+    ) -> str:
         """
         Generate a response to a user message.
 
         Args:
             user_message: The user's input text.
             system_prompt: Optional system prompt override.
+            add_to_history: Whether to add this exchange to conversation history.
 
         Returns:
             The model's response text.
@@ -119,8 +129,13 @@ class FridayBrain:
         )
 
         latency = time.perf_counter() - start
-        logger.info("Response generated in %.2fs (%d chars)", latency, len(response))
-        return response.strip()
+        response_text = response.strip()
+        logger.info("Response generated in %.2fs (%d chars)", latency, len(response_text))
+
+        if add_to_history:
+            self._add_to_history(user_message, response_text)
+
+        return response_text
 
     def think_stream(
         self, user_message: str, system_prompt: str | None = None
@@ -137,6 +152,7 @@ class FridayBrain:
         prompt = self._format_prompt(user_message, system_prompt)
 
         from mlx_lm import stream_generate
+        full_response = ""
         for token_text in stream_generate(
             self._model,
             self._tokenizer,
@@ -144,7 +160,11 @@ class FridayBrain:
             max_tokens=self.max_tokens,
             temp=self.temperature,
         ):
+            full_response += token_text
             yield token_text
+
+        # Commit to history after stream completes
+        self._add_to_history(user_message, full_response.strip())
 
     def _format_prompt(self, user_message: str, system_prompt: str | None = None) -> str:
         """
@@ -153,17 +173,109 @@ class FridayBrain:
         Phi-3.5 uses:
             <|system|>...<|end|>
             <|user|>...<|end|>
-            <|assistant|>
+            <|assistant|>...<|end|>
+
+        Includes conversation history for multi-turn context.
         """
         from src.core.prompts import DEFAULT_SYSTEM_PROMPT
 
         sys_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
 
-        return (
-            f"<|system|>\n{sys_prompt}<|end|>\n"
-            f"<|user|>\n{user_message}<|end|>\n"
-            f"<|assistant|>\n"
+        # System prompt
+        formatted = f"<|system|>\n{sys_prompt}<|end|>\n"
+
+        # Conversation history
+        for user_msg, assistant_msg in self._conversation_history:
+            formatted += f"<|user|>\n{user_msg}<|end|>\n"
+            formatted += f"<|assistant|>\n{assistant_msg}<|end|>\n"
+
+        # Current message
+        formatted += f"<|user|>\n{user_message}<|end|>\n"
+        formatted += "<|assistant|>\n"
+
+        return formatted
+
+    def _add_to_history(self, user_msg: str, assistant_msg: str) -> None:
+        """Add turn to conversation history, maintaining max length."""
+        self._conversation_history.append((user_msg, assistant_msg))
+
+        if len(self._conversation_history) > self._max_history_turns:
+            self._conversation_history = self._conversation_history[
+                -self._max_history_turns:
+            ]
+            logger.debug("Trimmed history to last %d turns", self._max_history_turns)
+
+    def clear_history(self) -> None:
+        """Clear conversation history (e.g., start new conversation)."""
+        self._conversation_history = []
+        logger.info("Conversation history cleared")
+
+    def get_history_length(self) -> int:
+        """Get number of turns in history."""
+        return len(self._conversation_history)
+
+    def think_with_tools(
+        self,
+        user_message: str,
+        max_tool_calls: int = 3,
+    ) -> str:
+        """
+        Think with tool-calling support.
+
+        Accumulates tool call/result pairs in a local message chain
+        so context is preserved across iterations. Only commits the
+        final user→response pair to conversation history.
+
+        Args:
+            user_message: User's input.
+            max_tool_calls: Maximum tool calls per turn (prevent loops).
+
+        Returns:
+            Final natural language response text.
+        """
+        import json
+        from src.tools.server import MCPToolServer
+        from src.core.prompts import TOOL_CALLING_PROMPT
+
+        tool_server = MCPToolServer()
+        tools_desc = tool_server.get_tools_description()
+        system_prompt = f"{TOOL_CALLING_PROMPT}\n\nAvailable tools:\n{tools_desc}"
+
+        # Build local message chain for this tool-calling session
+        messages: list[tuple[str, str]] = []
+
+        # First pass: ask the LLM
+        response = self.think(
+            user_message, system_prompt=system_prompt, add_to_history=False
         )
+
+        tool_calls_made = 0
+        while tool_calls_made < max_tool_calls:
+            tool_call = tool_server.parse_tool_call(response)
+            if not tool_call:
+                break  # No tool call — done
+
+            # Execute tool
+            tool_result = tool_server.execute_tool(tool_call)
+            logger.info("Tool %s result: %s", tool_call.get("name"), tool_result)
+
+            # Accumulate: previous response + tool result as a follow-up
+            messages.append((user_message if not messages else f"Tool result: {json.dumps(tool_result)}", response))
+
+            # Feed result back as a new user message
+            follow_up = (
+                f"Tool '{tool_call['name']}' returned: {json.dumps(tool_result)}\n\n"
+                "Provide a natural language response based on this result."
+            )
+            response = self.think(
+                follow_up, system_prompt=system_prompt, add_to_history=False
+            )
+
+            tool_calls_made += 1
+
+        # Commit only the original user message and final response to history
+        self._add_to_history(user_message, response)
+        return response
 
     def unload_model(self) -> None:
         """Unload model from memory (emergency cleanup)."""
