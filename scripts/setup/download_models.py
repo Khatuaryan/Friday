@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 # Add project root to path
-PROJECT_ROOT = Path(__file__).parent.parent
+PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 
@@ -90,13 +90,42 @@ def verify_phi_model(model_path: Path) -> bool:
         return True
 
 
+def download_whisper() -> Path:
+    """Download Distil-Whisper Small for MLX."""
+    print("\n" + "=" * 60)
+    print("Downloading Distil-Whisper Small (MLX)")
+    print("Size: ~500 MB — may take 3–10 minutes")
+    print("=" * 60 + "\n")
+
+    from huggingface_hub import snapshot_download
+
+    model_dir = PROJECT_ROOT / "models" / "distil-whisper-small"
+    model_dir.mkdir(parents=True, exist_ok=True)
+
+    model_path = snapshot_download(
+        repo_id="mlx-community/distil-whisper-small.en",
+        local_dir=str(model_dir),
+        local_dir_use_symlinks=False,
+    )
+
+    size_gb = sum(
+        os.path.getsize(os.path.join(dirpath, filename))
+        for dirpath, _, filenames in os.walk(model_path)
+        for filename in filenames
+    ) / (1024 ** 3)
+
+    print(f"\n✅ Distil-Whisper downloaded to: {model_path}")
+    print(f"   Total size: {size_gb:.2f} GB")
+    return Path(model_path)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Download FRIDAY models")
     parser.add_argument(
         "--model",
-        choices=["phi", "whisper", "piper", "all"],
-        default="phi",
-        help="Which model to download (default: phi)",
+        choices=["phi", "whisper", "all"],
+        default="all",
+        help="Which model to download (default: all)",
     )
     parser.add_argument(
         "--verify", action="store_true", default=True,
@@ -109,11 +138,8 @@ def main():
         if args.verify:
             verify_phi_model(model_path)
 
-    if args.model == "whisper":
-        print("⏭️  Distil-Whisper download deferred to Phase 3")
-
-    if args.model == "piper":
-        print("⏭️  Piper TTS download deferred to Phase 3")
+    if args.model in ("whisper", "all"):
+        download_whisper()
 
     print("\n🎯 Model download complete!")
 
