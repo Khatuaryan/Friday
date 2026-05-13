@@ -74,14 +74,18 @@ class VoicePipeline:
         # 2. Process with brain (if available)
         if self.brain:
             try:
-                response_text = self.brain.think(command_text)
+                # Use tool-calling path if available
+                if hasattr(self.brain, "think_with_tools"):
+                    response_text = self.brain.think_with_tools(command_text)
+                else:
+                    response_text = self.brain.think(command_text)
             except Exception as e:
                 logger.error("Brain error: %s", e)
                 response_text = "I'm having trouble processing that right now."
         else:
             response_text = (
                 f"I heard you say: {command_text}. "
-                "Brain integration is coming in Phase 4."
+                "Brain not connected."
             )
 
         logger.info("Response: %s", response_text)

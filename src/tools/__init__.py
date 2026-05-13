@@ -1,1 +1,1 @@
-# F.R.I.D.A.Y. Tools (MCP - Phase 5+)
+"""FRIDAY MCP Tool Servers."""

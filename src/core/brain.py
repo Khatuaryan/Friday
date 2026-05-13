@@ -214,6 +214,69 @@ class FridayBrain:
         """Get number of turns in history."""
         return len(self._conversation_history)
 
+    def think_with_tools(
+        self,
+        user_message: str,
+        max_tool_calls: int = 3,
+    ) -> str:
+        """
+        Think with tool-calling support.
+
+        Accumulates tool call/result pairs in a local message chain
+        so context is preserved across iterations. Only commits the
+        final user→response pair to conversation history.
+
+        Args:
+            user_message: User's input.
+            max_tool_calls: Maximum tool calls per turn (prevent loops).
+
+        Returns:
+            Final natural language response text.
+        """
+        import json
+        from src.tools.server import MCPToolServer
+        from src.core.prompts import TOOL_CALLING_PROMPT
+
+        tool_server = MCPToolServer()
+        tools_desc = tool_server.get_tools_description()
+        system_prompt = f"{TOOL_CALLING_PROMPT}\n\nAvailable tools:\n{tools_desc}"
+
+        # Build local message chain for this tool-calling session
+        messages: list[tuple[str, str]] = []
+
+        # First pass: ask the LLM
+        response = self.think(
+            user_message, system_prompt=system_prompt, add_to_history=False
+        )
+
+        tool_calls_made = 0
+        while tool_calls_made < max_tool_calls:
+            tool_call = tool_server.parse_tool_call(response)
+            if not tool_call:
+                break  # No tool call — done
+
+            # Execute tool
+            tool_result = tool_server.execute_tool(tool_call)
+            logger.info("Tool %s result: %s", tool_call.get("name"), tool_result)
+
+            # Accumulate: previous response + tool result as a follow-up
+            messages.append((user_message if not messages else f"Tool result: {json.dumps(tool_result)}", response))
+
+            # Feed result back as a new user message
+            follow_up = (
+                f"Tool '{tool_call['name']}' returned: {json.dumps(tool_result)}\n\n"
+                "Provide a natural language response based on this result."
+            )
+            response = self.think(
+                follow_up, system_prompt=system_prompt, add_to_history=False
+            )
+
+            tool_calls_made += 1
+
+        # Commit only the original user message and final response to history
+        self._add_to_history(user_message, response)
+        return response
+
     def unload_model(self) -> None:
         """Unload model from memory (emergency cleanup)."""
         if self._model is not None:
