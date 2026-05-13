@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import time
 from pathlib import Path
-from typing import Generator
+from typing import Generator, List, Optional, Tuple
 
 logger = logging.getLogger("friday.brain")
 
@@ -45,6 +45,10 @@ class FridayBrain:
         self._model = None
         self._tokenizer = None
         self._loaded = False
+
+        # Conversation history: list of (user_message, assistant_response) tuples
+        self._conversation_history: List[Tuple[str, str]] = []
+        self._max_history_turns = 10  # Limited for 8GB
 
     @property
     def is_loaded(self) -> bool:
@@ -90,13 +94,19 @@ class FridayBrain:
         memory_manager.log_usage()
         return load_time
 
-    def think(self, user_message: str, system_prompt: str | None = None) -> str:
+    def think(
+        self,
+        user_message: str,
+        system_prompt: str | None = None,
+        add_to_history: bool = True,
+    ) -> str:
         """
         Generate a response to a user message.
 
         Args:
             user_message: The user's input text.
             system_prompt: Optional system prompt override.
+            add_to_history: Whether to add this exchange to conversation history.
 
         Returns:
             The model's response text.
@@ -119,8 +129,13 @@ class FridayBrain:
         )
 
         latency = time.perf_counter() - start
-        logger.info("Response generated in %.2fs (%d chars)", latency, len(response))
-        return response.strip()
+        response_text = response.strip()
+        logger.info("Response generated in %.2fs (%d chars)", latency, len(response_text))
+
+        if add_to_history:
+            self._add_to_history(user_message, response_text)
+
+        return response_text
 
     def think_stream(
         self, user_message: str, system_prompt: str | None = None
@@ -137,6 +152,7 @@ class FridayBrain:
         prompt = self._format_prompt(user_message, system_prompt)
 
         from mlx_lm import stream_generate
+        full_response = ""
         for token_text in stream_generate(
             self._model,
             self._tokenizer,
@@ -144,7 +160,11 @@ class FridayBrain:
             max_tokens=self.max_tokens,
             temp=self.temperature,
         ):
+            full_response += token_text
             yield token_text
+
+        # Commit to history after stream completes
+        self._add_to_history(user_message, full_response.strip())
 
     def _format_prompt(self, user_message: str, system_prompt: str | None = None) -> str:
         """
@@ -153,17 +173,46 @@ class FridayBrain:
         Phi-3.5 uses:
             <|system|>...<|end|>
             <|user|>...<|end|>
-            <|assistant|>
+            <|assistant|>...<|end|>
+
+        Includes conversation history for multi-turn context.
         """
         from src.core.prompts import DEFAULT_SYSTEM_PROMPT
 
         sys_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
 
-        return (
-            f"<|system|>\n{sys_prompt}<|end|>\n"
-            f"<|user|>\n{user_message}<|end|>\n"
-            f"<|assistant|>\n"
-        )
+        # System prompt
+        formatted = f"<|system|>\n{sys_prompt}<|end|>\n"
+
+        # Conversation history
+        for user_msg, assistant_msg in self._conversation_history:
+            formatted += f"<|user|>\n{user_msg}<|end|>\n"
+            formatted += f"<|assistant|>\n{assistant_msg}<|end|>\n"
+
+        # Current message
+        formatted += f"<|user|>\n{user_message}<|end|>\n"
+        formatted += "<|assistant|>\n"
+
+        return formatted
+
+    def _add_to_history(self, user_msg: str, assistant_msg: str) -> None:
+        """Add turn to conversation history, maintaining max length."""
+        self._conversation_history.append((user_msg, assistant_msg))
+
+        if len(self._conversation_history) > self._max_history_turns:
+            self._conversation_history = self._conversation_history[
+                -self._max_history_turns:
+            ]
+            logger.debug("Trimmed history to last %d turns", self._max_history_turns)
+
+    def clear_history(self) -> None:
+        """Clear conversation history (e.g., start new conversation)."""
+        self._conversation_history = []
+        logger.info("Conversation history cleared")
+
+    def get_history_length(self) -> int:
+        """Get number of turns in history."""
+        return len(self._conversation_history)
 
     def unload_model(self) -> None:
         """Unload model from memory (emergency cleanup)."""

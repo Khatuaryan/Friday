@@ -98,10 +98,23 @@ class ActivationHandler:
 
         self._stt = SpeechToText()
         self._tts = TextToSpeech()
+
+        # Initialize brain (optional — graceful degradation if model missing)
+        brain = None
+        try:
+            from src.core.brain import FridayBrain
+            brain = FridayBrain()
+            brain.load_model()
+            logger.info("Brain loaded — full voice interaction ready")
+        except (FileNotFoundError, MemoryError) as e:
+            logger.warning("Brain not available (%s) — running without LLM", e)
+        except Exception:
+            logger.exception("Unexpected error loading brain")
+
         self._voice_pipeline = VoicePipeline(
             stt=self._stt,
             tts=self._tts,
-            brain=None,  # Phase 4
+            brain=brain,
         )
 
         self._wake_word.start()

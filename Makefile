@@ -1,4 +1,4 @@
-.PHONY: install verify-env benchmark-memory monitor test test-wake-word test-face test-stt test-tts test-voice-pipeline test-pipeline enroll-face download-model download-whisper clean help
+.PHONY: install verify-env benchmark-memory monitor test test-wake-word test-face test-stt test-tts test-voice-pipeline test-brain test-pipeline enroll-face download-model download-whisper clean help
 
 # Default target
 help:
@@ -15,6 +15,7 @@ help:
 	@echo "  make test-stt         Manual STT unit test"
 	@echo "  make test-tts         Manual TTS unit test"
 	@echo "  make test-voice-pipeline  Voice pipeline integration test"
+	@echo "  make test-brain      Brain integration test (requires model)"
 	@echo "  make test-pipeline   Integration test (Wake Word + Face)"
 	@echo "  make enroll-face     Enroll Boss face (Setup)"
 	@echo "  make download-whisper Download Distil-Whisper model"
@@ -67,6 +68,9 @@ test-tts:
 
 test-voice-pipeline:
 	.venv/bin/python tests/integration/pipeline_v2_voice.py
+
+test-brain:
+	.venv/bin/python tests/integration/pipeline_v3_brain.py
 
 download-whisper:
 	.venv/bin/python scripts/setup/download_models.py --model whisper
