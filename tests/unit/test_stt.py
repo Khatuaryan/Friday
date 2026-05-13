@@ -7,7 +7,7 @@ from src.modules.audio.stt import SpeechToText, SAMPLE_RATE, VAD_FRAME_SAMPLES
 class TestSpeechToText:
     def test_init_defaults(self):
         stt = SpeechToText()
-        assert stt.model_path == "mlx-community/distil-whisper-small.en"
+        assert stt.model_path == "mlx-community/whisper-small.en-mlx"
         assert stt.vad_aggressiveness == 2
         assert not stt.is_listening
 

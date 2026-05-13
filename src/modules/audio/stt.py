@@ -46,7 +46,7 @@ class SpeechToText:
 
     def __init__(
         self,
-        model_path: str = "mlx-community/distil-whisper-small.en",
+        model_path: str = "mlx-community/whisper-small.en-mlx",
         vad_aggressiveness: int = 2,
     ) -> None:
         """

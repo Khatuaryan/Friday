@@ -91,19 +91,19 @@ def verify_phi_model(model_path: Path) -> bool:
 
 
 def download_whisper() -> Path:
-    """Download Distil-Whisper Small for MLX."""
+    """Download Whisper Small for MLX."""
     print("\n" + "=" * 60)
-    print("Downloading Distil-Whisper Small (MLX)")
+    print("Downloading Whisper Small (MLX)")
     print("Size: ~500 MB — may take 3–10 minutes")
     print("=" * 60 + "\n")
 
     from huggingface_hub import snapshot_download
 
-    model_dir = PROJECT_ROOT / "models" / "distil-whisper-small"
+    model_dir = PROJECT_ROOT / "models" / "whisper-small.en-mlx"
     model_dir.mkdir(parents=True, exist_ok=True)
 
     model_path = snapshot_download(
-        repo_id="mlx-community/distil-whisper-small.en",
+        repo_id="mlx-community/whisper-small.en-mlx",
         local_dir=str(model_dir),
         local_dir_use_symlinks=False,
     )
@@ -114,7 +114,7 @@ def download_whisper() -> Path:
         for filename in filenames
     ) / (1024 ** 3)
 
-    print(f"\n✅ Distil-Whisper downloaded to: {model_path}")
+    print(f"\n✅ Whisper downloaded to: {model_path}")
     print(f"   Total size: {size_gb:.2f} GB")
     return Path(model_path)
 
