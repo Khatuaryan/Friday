@@ -117,7 +117,7 @@ class FridayBrain:
         prompt = self._format_prompt(user_message, system_prompt)
 
         from mlx_lm import generate
-        from mlx_lm.sample_utils import make_sampler
+        from mlx_lm.sample_utils import make_sampler, make_logits_processors
         start = time.perf_counter()
 
         response = generate(
@@ -126,8 +126,13 @@ class FridayBrain:
             prompt=prompt,
             max_tokens=self.max_tokens,
             sampler=make_sampler(self.temperature),
+            logits_processors=make_logits_processors(repetition_penalty=1.1, repetition_context_size=50),
             verbose=False,
         )
+
+        # Ensure we stop at the Phi-3.5 end token if the model forgets
+        if "<|end|>" in response:
+            response = response.split("<|end|>")[0]
 
         latency = time.perf_counter() - start
         response_text = response.strip()
@@ -153,7 +158,7 @@ class FridayBrain:
         prompt = self._format_prompt(user_message, system_prompt)
 
         from mlx_lm import stream_generate
-        from mlx_lm.sample_utils import make_sampler
+        from mlx_lm.sample_utils import make_sampler, make_logits_processors
         full_response = ""
         for response in stream_generate(
             self._model,
@@ -161,9 +166,18 @@ class FridayBrain:
             prompt=prompt,
             max_tokens=self.max_tokens,
             sampler=make_sampler(self.temperature),
+            logits_processors=make_logits_processors(repetition_penalty=1.1, repetition_context_size=50),
         ):
             token_text = response.text
             full_response += token_text
+            
+            # Early stop if the model spits out the end token
+            if "<|end|>" in full_response:
+                clean_text = token_text.replace("<|end|>", "")
+                if clean_text:
+                    yield clean_text
+                break
+                
             yield token_text
 
         # Commit to history after stream completes
