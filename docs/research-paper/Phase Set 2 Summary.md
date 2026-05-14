@@ -31,6 +31,9 @@ Phase Set 2 completed the cognitive loop of F.R.I.D.A.Y. by integrating a local 
 - **Problem**: We encountered "load rejected" errors even when 2.9GB of RAM was free. 
 - **Rationale**: We implemented a strict **1.0GB System Safety Buffer** in our `MemoryManager`. 
 - **Reasoning**: On 8GB machines, if the LLM (2.2GB) consumes all available RAM, macOS begins "Memory Compression" and "SSD Swapping." This causes the CPU to spike to 100% and makes the UI unresponsive. By blocking the load when available RAM < (Model + 1GB), we ensure system stability.
+- **Developer Override**: To allow testing when the Mac is under heavy load (e.g., during IDE usage), we implemented an override via the `FRIDAY_MEM_BUFFER` environment variable. 
+  - *Usage*: `FRIDAY_MEM_BUFFER=0.5 make test-brain` lowers the buffer to 500MB.
+  - ⚠️ Warning for your Research Paper: Lowering the buffer below 0.5 GB is risky. If the OS runs out of "Wired" memory, it will force the LLM into "Swap" (SSD storage), which will make FRIDAY extremely slow (down to 1-2 tokens per second). 0.5 GB is usually the "sweet spot" for 8GB Macs! 
 
 ### 3. EventKit Asynchronous Authorization Deadlock
 - **Problem**: Requesting Calendar access via `EKEventStore` is an asynchronous OS-level call. In a CLI environment, the script would often finish or hang before the user could click "Allow" in the macOS popup.
@@ -39,6 +42,12 @@ Phase Set 2 completed the cognitive loop of F.R.I.D.A.Y. by integrating a local 
 ### 4. Hugging Face Repository 404 (Registry Instability)
 - **Problem**: The `mlx-community` repository for `distil-whisper-small.en` was unexpectedly renamed/removed, breaking the automated setup.
 - **Resolution**: Switched to the more stable `whisper-small.en-mlx` endpoint and updated the `download_models.py` script with better error handling for repository discovery.
+
+### 5. Infinite Inference Looping under Memory Pressure
+- **Problem**: When the system was under extreme memory pressure (near 90% RAM usage), the Phi-3.5-mini model would occasionally enter a "hallucination loop," repeating tokens like "Phi Phi Phi" indefinitely and ignoring the `<|end|>` stop token.
+- **Resolution**: 
+    - Implemented a **Repetition Penalty (1.1)** via `make_logits_processors` to discourage the model from repeating recent tokens.
+    - Added a **Strict Early Exit** logic in the generation loop that manually terminates the stream as soon as the `<|end|>` substring is detected in the response text, preventing the model from generating multiple assistant turns.
 
 ---
 
