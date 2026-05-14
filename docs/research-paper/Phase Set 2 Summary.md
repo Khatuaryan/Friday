@@ -55,6 +55,7 @@ Phase Set 2 completed the cognitive loop of F.R.I.D.A.Y. by integrating a local 
 - **Total Integrated RAM Usage**: ~3.3 GB (within 3.5 GB target).
 - **Inference Speed**: ~15-20 tokens/sec on M2.
 - **Tool Accuracy**: 100% success rate in parsing `<tool_call>` blocks via regex-anchored JSON extraction.
+- **Self-Correction Capability**: The `think_with_tools` multi-turn loop successfully allows the LLM to recover from its own hallucinated parameter names (e.g., correcting `arg1` to `info_type` after receiving an execution error), a key feature for reliability on small models.
 
 ---
 
@@ -62,3 +63,4 @@ Phase Set 2 completed the cognitive loop of F.R.I.D.A.Y. by integrating a local 
 We implemented a custom "Model Context Protocol" (MCP) server to allow the LLM to interact with the Mac. 
 - **File Sandbox**: Restricts the LLM to `~/Documents`, `~/Desktop`, and `~/Downloads` only. 
 - **History Management**: Implemented a rolling 10-turn window to prevent the LLM's context window from growing and consuming excessive memory during long sessions.
+- **Visual Feedback**: Integrated native macOS Notifications via AppleScript to provide state-awareness (Listening/Verifying) without the RAM overhead of a heavy GUI library.

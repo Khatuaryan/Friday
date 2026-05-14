@@ -25,7 +25,7 @@ class SystemTool(Tool):
 
     @property
     def description(self) -> str:
-        return "Get system information: battery, storage, memory, or network status"
+        return "Get system information (battery, storage, memory, or network). MUST specify 'info_type' as one of the parameters."
 
     @property
     def parameters(self) -> Dict[str, Any]:
