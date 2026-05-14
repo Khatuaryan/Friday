@@ -117,6 +117,7 @@ class FridayBrain:
         prompt = self._format_prompt(user_message, system_prompt)
 
         from mlx_lm import generate
+        from mlx_lm.sample_utils import make_sampler
         start = time.perf_counter()
 
         response = generate(
@@ -124,7 +125,7 @@ class FridayBrain:
             self._tokenizer,
             prompt=prompt,
             max_tokens=self.max_tokens,
-            temp=self.temperature,
+            sampler=make_sampler(self.temperature),
             verbose=False,
         )
 
@@ -152,14 +153,16 @@ class FridayBrain:
         prompt = self._format_prompt(user_message, system_prompt)
 
         from mlx_lm import stream_generate
+        from mlx_lm.sample_utils import make_sampler
         full_response = ""
-        for token_text in stream_generate(
+        for response in stream_generate(
             self._model,
             self._tokenizer,
             prompt=prompt,
             max_tokens=self.max_tokens,
-            temp=self.temperature,
+            sampler=make_sampler(self.temperature),
         ):
+            token_text = response.text
             full_response += token_text
             yield token_text
 

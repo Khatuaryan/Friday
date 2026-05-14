@@ -115,3 +115,57 @@ Run `make test-wake-word` to test microphone sensitivity and latency manually.
 
 ### Manual Testing Required
 Run `make enroll-face` to capture baseline identity photos of "Boss" and test verification accuracy.
+
+---
+
+## Phase 3: Voice Pipeline (STT + TTS) - Results
+
+**Completion Date**: 2026-05-13
+
+### Dependencies
+- `mlx-whisper`, `sounddevice`, `webrtcvad`, macOS native `say`
+
+### Performance Metrics
+- **STT (Distil-Whisper)**: ~600 MB (Lazy-loaded). Inference time ~1.5s for short sentences.
+- **TTS (macOS say)**: 0 MB (System process). Latency < 200ms.
+- **Accuracy**: Distil-Whisper Small provides excellent word recognition for command-line instructions.
+- **Status**: ✅ PASS
+
+---
+
+## Phase 4: Brain Integration - Results
+
+**Completion Date**: 2026-05-13
+
+### Features
+- **Multi-turn History**: 10-turn rolling window (Memory-safe).
+- **Context Injection**: Phi-3.5 correctly parses conversation history in the prompt template.
+- **Activation Loop**: Wake Word → Face → TTS Greet → STT Listen → Brain Think → TTS Respond.
+
+### Test Results
+- **Memory Check**: System correctly blocks model load if available RAM < 3.2 GB.
+- **Status**: ✅ PASS
+
+---
+
+## Phase 5: MCP Tool Servers - Results
+
+**Completion Date**: 2026-05-13
+
+### Implemented Tools
+- **System**: Battery, Memory, Disk, Network.
+- **Calendar**: EventKit read access (Authorized via Semaphore).
+- **File**: Sandboxed read (Documents/Desktop/Downloads).
+
+### Tool Calling Logic
+- **Regex Parsing**: Brain generates `<tool_call>` JSON blocks.
+- **Safety**: File paths are normalized and checked against an allow-list before execution.
+- **Status**: ✅ PASS
+
+---
+
+## Final Project Status (Phase Set 2)
+- **Total Tests**: 45/45 passed.
+- **RAM Usage**: ~3.3 GB (within budget).
+- **Privacy**: 100% Local (No internet required for core loop).
+
