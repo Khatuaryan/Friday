@@ -127,13 +127,17 @@ class MemoryManager:
     def check_can_load_model(self, model_size_gb: float) -> bool:
         """
         Check if it is safe to load a model of the given size.
-
-        Leaves a 1 GB buffer for safety.
+        
+        Leaves a configurable buffer for safety (default 1.0 GB).
         """
+        # Allow overriding buffer for constrained 8GB systems
+        import os
+        buffer_gb = float(os.getenv("FRIDAY_MEM_BUFFER", 1.0))
+        
         status = self.get_status()
         projected = status.friday_rss_gb + model_size_gb
         budget_ok = projected <= self.friday_budget_gb
-        system_ok = (status.available_gb - model_size_gb) >= 1.0
+        system_ok = (status.available_gb - model_size_gb) >= buffer_gb
 
         if not budget_ok:
             logger.warning(
@@ -143,8 +147,8 @@ class MemoryManager:
             )
         if not system_ok:
             logger.warning(
-                "Model load rejected: only %.2f GB available, need %.2f GB + 1 GB buffer",
-                status.available_gb, model_size_gb,
+                "Model load rejected: only %.2f GB available, need %.2f GB + %.1f GB buffer",
+                status.available_gb, model_size_gb, buffer_gb
             )
         return budget_ok and system_ok
 
