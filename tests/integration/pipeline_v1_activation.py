@@ -24,26 +24,20 @@ def say(text):
 
 def on_boss_verified():
     logger.info("CALLBACK: Boss has been verified!")
-    say("Hey Boss, what can I do for you?")
+    # We no longer need to manually transition states here,
+    # and we removed the duplicate 'say' call because the handler
+    # or the VoicePipeline will take over.
     
-    # Normally we would transition to listening for a voice command here
-    # For this test, we'll just wait a bit and go back to idle listening
-    time.sleep(2)
-    handler._set_state(ActivationState.LISTENING) # Reset state for the test loop
-    logger.info("System reset. Listening for wake word again...")
-
 def on_stranger():
     logger.info("CALLBACK: Stranger detected.")
-    say("I'm sorry, I am only authorized to assist Boss.")
 
 def on_no_face():
     logger.info("CALLBACK: No face detected.")
-    say("I heard you, but I couldn't see your face.")
 
 if __name__ == "__main__":
     print("\n" + "=" * 60)
-    print("F.R.I.D.A.Y. Pipeline Integration Test")
-    print("Wake Word -> Vision Recognition -> Text To Speech")
+    print("F.R.I.D.A.Y. Pipeline Integration Test (Fixed)")
+    print("Wake Word -> Vision Recognition -> Voice Loop")
     print("=" * 60)
     print("\nSay 'Hey Mycroft' to trigger the pipeline.")
     print("Ensure you are visible to the camera when triggering.")
@@ -71,11 +65,9 @@ if __name__ == "__main__":
 
     try:
         handler.start()
+        # This will now block and process camera/brain on the main thread!
+        handler.run_loop()
         
-        # Keep main thread alive
-        while True:
-            time.sleep(1)
-            
     except KeyboardInterrupt:
         print("\nStopping pipeline test...")
         handler.stop()

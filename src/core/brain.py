@@ -100,19 +100,13 @@ class FridayBrain:
         system_prompt: str | None = None,
         add_to_history: bool = True,
     ) -> str:
-        """
-        Generate a response to a user message.
-
-        Args:
-            user_message: The user's input text.
-            system_prompt: Optional system prompt override.
-            add_to_history: Whether to add this exchange to conversation history.
-
-        Returns:
-            The model's response text.
-        """
+        """Generate a response to a user message."""
         if not self._loaded:
             raise RuntimeError("Model not loaded. Call load_model() first.")
+
+        # Ensure MLX GPU stream is ready for this thread
+        import mlx.core as mx
+        mx.default_stream(mx.gpu)
 
         prompt = self._format_prompt(user_message, system_prompt)
 
@@ -148,12 +142,13 @@ class FridayBrain:
     ) -> Generator[str, None, None]:
         """
         Stream response tokens one at a time.
-
-        Yields:
-            Individual tokens as they are generated.
         """
         if not self._loaded:
             raise RuntimeError("Model not loaded. Call load_model() first.")
+
+        # Ensure MLX GPU stream is ready for this thread
+        import mlx.core as mx
+        mx.default_stream(mx.gpu)
 
         prompt = self._format_prompt(user_message, system_prompt)
 

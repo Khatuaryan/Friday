@@ -97,20 +97,25 @@ class TextToSpeech:
 
     def _speak_macos(self, text: str) -> None:
         """Speak using macOS built-in `say` command."""
+        # Prevent speaking massive hallucinations
+        if len(text) > 1000:
+            logger.warning("TTS text too long (%d chars), truncating to 1000", len(text))
+            text = text[:1000] + "... and so on."
+
         # Sanitize text for shell safety (say accepts stdin too)
         cmd = ["say", "-v", self.voice, "-r", str(self.rate)]
 
         try:
-            proc = subprocess.run(
+            subprocess.run(
                 cmd,
                 input=text,
                 text=True,
                 check=True,
-                timeout=60,
+                timeout=300, # Increased from 60 to 300
                 capture_output=True,
             )
         except subprocess.TimeoutExpired:
-            logger.warning("macOS `say` timed out after 60s")
+            logger.warning("macOS `say` timed out after 300s")
         except subprocess.CalledProcessError as e:
             logger.error("macOS `say` failed: %s", e.stderr)
         except FileNotFoundError:

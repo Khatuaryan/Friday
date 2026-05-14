@@ -55,32 +55,37 @@ class MCPToolServer:
     def parse_tool_call(self, response_text: str) -> Optional[Dict[str, Any]]:
         """
         Parse <tool_call> block from LLM response.
-
-        Format:
-            <tool_call>
-            {"name": "tool_name", "arguments": {"arg1": "value1"}}
-            </tool_call>
-
-        Returns:
-            Parsed tool call dict, or None if no tool call found.
+        
+        More robust parsing that handles slightly malformed tags or missing closing tags.
         """
+        # Look for <tool_call> and then any JSON-like structure following it
         match = re.search(
-            r"<tool_call>(.*?)</tool_call>",
+            r"<tool_call>(.*?)(?:</tool_call>|$)",
             response_text,
-            re.DOTALL,
+            re.DOTALL | re.IGNORECASE,
         )
 
         if not match:
             return None
 
+        content = match.group(1).strip()
+        
+        # If the LLM included trailing text after the JSON, try to find the JSON part
+        # by looking for the first { and the corresponding last }
+        if "{" in content:
+            start_idx = content.find("{")
+            end_idx = content.rfind("}")
+            if end_idx > start_idx:
+                content = content[start_idx:end_idx+1]
+
         try:
-            tool_call = json.loads(match.group(1).strip())
+            tool_call = json.loads(content)
             if "name" not in tool_call:
-                logger.error("Tool call missing 'name' field")
+                logger.error("Tool call missing 'name' field: %s", content)
                 return None
             return tool_call
         except json.JSONDecodeError as e:
-            logger.error("Failed to parse tool call JSON: %s", e)
+            logger.error("Failed to parse tool call JSON: %s. Content: %s", e, content)
             return None
 
     def execute_tool(self, tool_call: Dict[str, Any]) -> Dict[str, Any]:
