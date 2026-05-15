@@ -53,6 +53,16 @@ class FileTool(Tool):
 
     def execute(self, file_path: str) -> Dict[str, Any]:
         """Read file contents with safety checks."""
+        # Auto-correct common LLM hallucinations for the home directory
+        if file_path.startswith("/Users/YourUsername") or file_path.startswith("/Users/Username"):
+            import os
+            # Replace the fake prefix with the actual home directory
+            parts = file_path.split("/")
+            # parts will be ['', 'Users', 'YourUsername', 'Documents', ...]
+            # We want to keep everything from index 3 onwards and join with home
+            if len(parts) > 3:
+                file_path = os.path.join(str(Path.home()), *parts[3:])
+
         path = Path(file_path).expanduser().resolve()
 
         # Security check
