@@ -56,37 +56,68 @@ class MCPToolServer:
         """
         Parse <tool_call> block from LLM response.
         
-        More robust parsing that handles slightly malformed tags or missing closing tags.
+        More robust parsing that handles slightly malformed tags, missing closing tags,
+        or completely missing tags if the model just outputs JSON.
         """
-        # Look for <tool_call> and then any JSON-like structure following it
+        content = None
+        
+        # 1. Look for <tool_call> and then any JSON-like structure following it
         match = re.search(
             r"<tool_call>(.*?)(?:</tool_call>|$)",
             response_text,
             re.DOTALL | re.IGNORECASE,
         )
 
-        if not match:
-            return None
-
-        content = match.group(1).strip()
+        if match:
+            content = match.group(1).strip()
+        else:
+            # 2. Fallback: if no tags, check if the response itself looks like a tool JSON
+            if '"name"' in response_text and '"arguments"' in response_text:
+                content = response_text.strip()
+            else:
+                return None
         
         # If the LLM included trailing text after the JSON, try to find the JSON part
         # by looking for the first { and the corresponding last }
-        if "{" in content:
+        if content and "{" in content:
             start_idx = content.find("{")
             end_idx = content.rfind("}")
             if end_idx > start_idx:
-                content = content[start_idx:end_idx+1]
+                # Basic extraction
+                content_candidate = content[start_idx:end_idx+1]
+            else:
+                content_candidate = content[start_idx:]
+        else:
+            content_candidate = content
 
-        try:
-            tool_call = json.loads(content)
-            if "name" not in tool_call:
-                logger.error("Tool call missing 'name' field: %s", content)
-                return None
-            return tool_call
-        except json.JSONDecodeError as e:
-            logger.error("Failed to parse tool call JSON: %s. Content: %s", e, content)
+        if not content_candidate:
             return None
+
+        # Auto-repair: Small models often drop the final '}'
+        # We will try parsing, and if it fails due to expecting a delimiter, we add '}'
+        try:
+            tool_call = json.loads(content_candidate)
+        except json.JSONDecodeError as e:
+            # Attempt auto-repair by adding a closing brace
+            try:
+                repaired = content_candidate + "}"
+                tool_call = json.loads(repaired)
+                logger.info("Auto-repaired missing JSON brace in tool call")
+            except json.JSONDecodeError:
+                # If it still fails, try adding two closing braces just in case
+                try:
+                    repaired = content_candidate + "}}"
+                    tool_call = json.loads(repaired)
+                    logger.info("Auto-repaired missing JSON braces in tool call")
+                except json.JSONDecodeError:
+                    logger.error("Failed to parse tool call JSON: %s. Content: %s", e, content_candidate)
+                    return None
+
+        if "name" not in tool_call:
+            logger.error("Tool call missing 'name' field: %s", content_candidate)
+            return None
+            
+        return tool_call
 
     def execute_tool(self, tool_call: Dict[str, Any]) -> Dict[str, Any]:
         """
