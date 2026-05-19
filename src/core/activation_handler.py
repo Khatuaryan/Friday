@@ -87,9 +87,11 @@ class ActivationHandler:
 
         self._voice_pipeline = VoicePipeline(stt=self._stt, tts=self._tts, brain=brain)
         
-        # Inject voice_pipeline into proactive engine so it can speak reminders
+        # Inject voice_pipeline and activation_handler into proactive engine
+        # so it can speak reminders AND check pipeline state before doing so
         if brain and getattr(brain, "proactive_engine", None):
             brain.proactive_engine.voice_pipeline = self._voice_pipeline
+            brain.proactive_engine.activation_handler = self
         
         self._running = True
         self._wake_word.start()
@@ -136,6 +138,13 @@ class ActivationHandler:
             self._set_state(ActivationState.VERIFYING)
 
         logger.info("🎤 Wake word detected! Verifying identity...")
+
+        # Preempt any proactive TTS that may be playing right now.
+        # This kills the active `say` subprocess and drains the queue,
+        # ensuring the activation pipeline owns the audio output exclusively.
+        if self._tts and self._tts.is_speaking:
+            logger.info("Preempting proactive TTS for wake word activation")
+            self._tts.stop()
         
         # Show a notification for visual feedback
         self._show_notification("F.R.I.D.A.Y.", "Wake word detected. Verifying identity...")
