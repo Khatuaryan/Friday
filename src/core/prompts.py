@@ -58,3 +58,29 @@ You know what application the user is currently using.
 Use this context to provide more relevant assistance.
 Do NOT mention that you can see their screen — you only know the active app name.
 """
+
+def format_context_prompt(base_prompt: str, active_app: dict = None, rag_context: list = None) -> str:
+    """
+    Appends active context (window, app) and RAG memory retrieved context
+    to the base system prompt.
+    """
+    prompt = base_prompt
+    
+    if active_app:
+        app_name = active_app.get("app", "Unknown")
+        window = active_app.get("window", "")
+        prompt += f"\n\n[System Context: The user is currently using the application '{app_name}'"
+        if window:
+            prompt += f" with the window title '{window}'"
+        prompt += ". Use this context to provide relevant assistance if applicable.]"
+        
+    if rag_context:
+        prompt += "\n\n[Retrieved Memory Context:]\n"
+        for item in rag_context:
+            if item["type"] == "conversation":
+                # Convert timestamp if possible, else just show content
+                prompt += f"Past Conversation: {item['role']}: {item['content']}\n"
+            elif item["type"] == "fact":
+                prompt += f"Fact: {item['content']}\n"
+                
+    return prompt

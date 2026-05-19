@@ -87,6 +87,10 @@ class ActivationHandler:
 
         self._voice_pipeline = VoicePipeline(stt=self._stt, tts=self._tts, brain=brain)
         
+        # Inject voice_pipeline into proactive engine so it can speak reminders
+        if brain and getattr(brain, "proactive_engine", None):
+            brain.proactive_engine.voice_pipeline = self._voice_pipeline
+        
         self._running = True
         self._wake_word.start()
         self._set_state(ActivationState.LISTENING)

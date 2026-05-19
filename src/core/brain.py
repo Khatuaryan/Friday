@@ -50,6 +50,11 @@ class FridayBrain:
         self._conversation_history: List[Tuple[str, str]] = []
         self._max_history_turns = 10  # Limited for 8GB
 
+        # Phase 6-8 Context
+        self.memory_store = None
+        self.context_tracker = None
+        self.proactive_engine = None
+
     @property
     def is_loaded(self) -> bool:
         return self._loaded
@@ -92,6 +97,22 @@ class FridayBrain:
 
         logger.info("Phi-3.5-mini loaded in %.1fs", load_time)
         memory_manager.log_usage()
+        
+        # Initialize Phase 6-8 subsystems
+        try:
+            from src.memory.store import MemoryStore
+            from src.context.tracker import ContextTracker
+            from src.proactive.engine import ProactiveEngine
+            
+            self.memory_store = MemoryStore()
+            self.context_tracker = ContextTracker()
+            self.context_tracker.start()
+            self.proactive_engine = ProactiveEngine(context_tracker=self.context_tracker)
+            self.proactive_engine.start()
+            logger.info("RAG Memory, Context, and Proactive Engines initialized.")
+        except Exception as e:
+            logger.warning(f"Failed to initialize Phase Set 3 subsystems: {e}")
+            
         return load_time
 
     def think(
@@ -136,6 +157,29 @@ class FridayBrain:
             self._add_to_history(user_message, response_text)
 
         return response_text
+
+    def think_with_memory_and_context(self, user_message: str) -> str:
+        """Thinks using RAG memory and active context."""
+        from src.core.prompts import DEFAULT_SYSTEM_PROMPT, format_context_prompt
+        
+        rag_context = []
+        active_app = None
+        
+        if self.memory_store:
+            rag_context = self.memory_store.search(user_message, limit=3)
+            self.memory_store.add_conversation_turn("user", user_message)
+            
+        if self.context_tracker:
+            active_app = self.context_tracker.get_current_context()
+            
+        system_prompt = format_context_prompt(DEFAULT_SYSTEM_PROMPT, active_app, rag_context)
+        
+        response = self.think(user_message, system_prompt=system_prompt, add_to_history=True)
+        
+        if self.memory_store:
+            self.memory_store.add_conversation_turn("assistant", response)
+            
+        return response
 
     def think_stream(
         self, user_message: str, system_prompt: str | None = None

@@ -74,8 +74,11 @@ class VoicePipeline:
         # 2. Process with brain (if available)
         if self.brain:
             try:
-                # Use tool-calling path if available
-                if hasattr(self.brain, "think_with_tools"):
+                # Use context-aware path if available
+                if hasattr(self.brain, "think_with_memory_and_context"):
+                    response_text = self.brain.think_with_memory_and_context(command_text)
+                # Fallback to tool-calling path
+                elif hasattr(self.brain, "think_with_tools"):
                     response_text = self.brain.think_with_tools(command_text)
                 else:
                     response_text = self.brain.think(command_text)
