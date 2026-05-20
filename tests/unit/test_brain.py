@@ -67,3 +67,77 @@ class TestFridayBrain:
         # Current message should be last
         assert prompt.endswith("<|assistant|>\n")
         assert "What is my name?" in prompt
+
+    def test_dynamic_registry_loading_phi(self, tmp_path):
+        config_data = {
+            "active_model": "phi-3.5-mini",
+            "models_registry": {
+                "phi-3.5-mini": {
+                    "repo_id": "mlx-community/Phi-3.5-mini-instruct-4bit",
+                    "path": "models/phi-3.5-mini-4bit",
+                    "memory_gb": 2.2,
+                    "context_window": 4096
+                },
+                "gemma-3-12b": {
+                    "repo_id": "mlx-community/gemma-3-12b-it-4bit",
+                    "path": "models/gemma-3-12b-4bit",
+                    "memory_gb": 7.0,
+                    "context_window": 8192
+                }
+            }
+        }
+        import yaml
+        cfg_file = tmp_path / "friday_config_8gb.yaml"
+        with open(cfg_file, "w") as f:
+            yaml.dump(config_data, f)
+            
+        brain = FridayBrain(config_path=cfg_file)
+        assert brain.model_path == "models/phi-3.5-mini-4bit"
+        assert brain.model_memory_gb == 2.2
+        assert brain.context_window == 4096
+
+    def test_dynamic_registry_loading_gemma(self, tmp_path):
+        config_data = {
+            "active_model": "gemma-3-12b",
+            "models_registry": {
+                "phi-3.5-mini": {
+                    "repo_id": "mlx-community/Phi-3.5-mini-instruct-4bit",
+                    "path": "models/phi-3.5-mini-4bit",
+                    "memory_gb": 2.2,
+                    "context_window": 4096
+                },
+                "gemma-3-12b": {
+                    "repo_id": "mlx-community/gemma-3-12b-it-4bit",
+                    "path": "models/gemma-3-12b-4bit",
+                    "memory_gb": 7.0,
+                    "context_window": 8192
+                }
+            }
+        }
+        import yaml
+        cfg_file = tmp_path / "friday_config_8gb.yaml"
+        with open(cfg_file, "w") as f:
+            yaml.dump(config_data, f)
+            
+        brain = FridayBrain(config_path=cfg_file)
+        assert brain.model_path == "models/gemma-3-12b-4bit"
+        assert brain.model_memory_gb == 7.0
+        assert brain.context_window == 8192
+
+    def test_format_prompt_with_tokenizer_chat_template(self):
+        brain = FridayBrain()
+        mock_tokenizer = MagicMock()
+        mock_tokenizer.apply_chat_template.return_value = "Formatted Chat Template Result"
+        brain._tokenizer = mock_tokenizer
+        
+        prompt = brain._format_prompt("Hello!", "System instruction")
+        assert prompt == "Formatted Chat Template Result"
+        mock_tokenizer.apply_chat_template.assert_called_once_with(
+            [
+                {"role": "system", "content": "System instruction"},
+                {"role": "user", "content": "Hello!"}
+            ],
+            tokenize=False,
+            add_generation_prompt=True
+        )
+

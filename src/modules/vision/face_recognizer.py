@@ -88,42 +88,60 @@ class VisionFaceRecognizer:
             is_ios_audio = "iphone" in audio_name or "ios" in audio_name
             
             # 2. Discover video devices
+            device_types = [
+                AVFoundation.AVCaptureDeviceTypeBuiltInWideAngleCamera,
+                AVFoundation.AVCaptureDeviceTypeExternalUnknown,
+                AVFoundation.AVCaptureDeviceTypeContinuityCamera
+            ]
+            if hasattr(AVFoundation, "AVCaptureDeviceTypeExternal"):
+                device_types.append(AVFoundation.AVCaptureDeviceTypeExternal)
+                
             discovery_session = AVFoundation.AVCaptureDeviceDiscoverySession.discoverySessionWithDeviceTypes_mediaType_position_(
-                [
-                    AVFoundation.AVCaptureDeviceTypeBuiltInWideAngleCamera,
-                    AVFoundation.AVCaptureDeviceTypeExternalUnknown,
-                    AVFoundation.AVCaptureDeviceTypeContinuityCamera
-                ],
+                device_types,
                 AVFoundation.AVMediaTypeVideo,
                 AVFoundation.AVCaptureDevicePositionUnspecified
             )
-            devices = discovery_session.devices()
+            devices = list(discovery_session.devices())
 
-            # 3. Match video device to audio device
-            has_ios_camera = False
-            for device in devices:
+            # 3. Match video device to audio device by dynamic device list scanning
+            ios_device_index = None
+            mac_device_index = None
+
+            for idx, device in enumerate(devices):
                 name = device.localizedName().lower()
                 if "iphone" in name or "ios" in name or "continuity" in name:
-                    has_ios_camera = True
-                    break
-            
-            # OpenCV on macOS Ventura+ maps Continuity Camera to index 0,
-            # and pushes the built-in FaceTime HD Camera to index 1.
-            # If the iOS camera is NOT present, FaceTime HD is at index 0.
-            
-            if is_ios_audio and has_ios_camera:
-                logger.info("Matched iOS camera to iOS microphone. Using OpenCV index 0.")
-                return 0
-            elif not is_ios_audio and has_ios_camera:
-                logger.info("Matched Mac camera to Mac microphone. iPhone is connected, so Mac camera is pushed to OpenCV index 1.")
-                return 1
+                    if ios_device_index is None:
+                        ios_device_index = idx
+                else:
+                    if mac_device_index is None:
+                        mac_device_index = idx
+
+            logger.info("Discovered camera devices: %s", [d.localizedName() for d in devices])
+            logger.info("Indices: iOS Camera = %s, Mac Camera = %s", ios_device_index, mac_device_index)
+
+            if is_ios_audio:
+                # Target is iOS Camera
+                if ios_device_index is not None:
+                    logger.info("Matched iOS camera to iOS microphone. Using index %d.", ios_device_index)
+                    return ios_device_index
+                elif mac_device_index is not None:
+                    logger.info("iOS camera requested but not found. Falling back to Mac camera at index %d.", mac_device_index)
+                    return mac_device_index
             else:
-                logger.info("No Continuity camera detected. Using default OpenCV index 0.")
-                return 0
+                # Target is Mac built-in FaceTime Camera
+                if mac_device_index is not None:
+                    logger.info("Matched Mac camera to Mac microphone. Using index %d.", mac_device_index)
+                    return mac_device_index
+                elif ios_device_index is not None:
+                    logger.info("Mac camera requested but not found. Falling back to iOS camera at index %d.", ios_device_index)
+                    return ios_device_index
+
+            return 0
 
         except Exception as e:
-            logger.debug("Camera discovery failed: %s", e)
+            logger.debug("Camera discovery failed: %s. Defaulting to 0.", e)
             return 0
+
 
     def verify_identity(self, camera_index: Optional[int] = None) -> Tuple[str, Optional[str]]:
         """

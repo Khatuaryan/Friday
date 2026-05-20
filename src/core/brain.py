@@ -36,11 +36,48 @@ class FridayBrain:
         max_tokens: int = 1024,
         temperature: float = 0.7,
         context_window: int = 4096,
+        config_path: str | Path | None = None,
     ) -> None:
-        self.model_path = str(model_path or self.DEFAULT_MODEL_PATH)
+        import yaml
+        from pathlib import Path
+        
+        # Load from friday_config_8gb.yaml if possible
+        if not config_path:
+            config_path = Path(__file__).parent.parent.parent / "config" / "friday_config_8gb.yaml"
+            
+        config = None
+        if Path(config_path).exists():
+            try:
+                with open(config_path) as f:
+                    config = yaml.safe_load(f)
+            except Exception as e:
+                logger.warning(f"Failed to load config at {config_path}: {e}")
+                
+        # If model_path is explicitly provided, prioritize it
+        if model_path:
+            self.model_path = str(model_path)
+            self.model_memory_gb = 2.2
+            self.context_window = context_window
+        elif config and "active_model" in config and "models_registry" in config:
+            active = config["active_model"]
+            model_cfg = config["models_registry"].get(active)
+            if model_cfg:
+                self.model_path = model_cfg["path"]
+                self.model_memory_gb = model_cfg["memory_gb"]
+                self.context_window = model_cfg.get("context_window", context_window)
+                logger.info(f"Loaded active model '{active}' from registry (path={self.model_path}, memory={self.model_memory_gb}GB, context={self.context_window})")
+            else:
+                logger.warning(f"Active model '{active}' not found in registry. Using defaults.")
+                self.model_path = self.DEFAULT_MODEL_PATH
+                self.model_memory_gb = 2.2
+                self.context_window = context_window
+        else:
+            self.model_path = self.DEFAULT_MODEL_PATH
+            self.model_memory_gb = 2.2
+            self.context_window = context_window
+
         self.max_tokens = max_tokens
         self.temperature = temperature
-        self.context_window = context_window
 
         self._model = None
         self._tokenizer = None
@@ -73,9 +110,9 @@ class FridayBrain:
         from src.memory.manager import memory_manager
 
         # Pre-flight memory check
-        if not memory_manager.check_can_load_model(2.2):
+        if not memory_manager.check_can_load_model(self.model_memory_gb):
             raise MemoryError(
-                "Insufficient memory to load Phi-3.5-mini (need 2.2 GB). "
+                f"Insufficient memory to load active model (need {self.model_memory_gb} GB). "
                 "Close heavy applications and try again."
             )
 
@@ -290,31 +327,37 @@ class FridayBrain:
 
     def _format_prompt(self, user_message: str, system_prompt: str | None = None) -> str:
         """
-        Format prompt for Phi-3.5-mini-instruct chat template.
-
-        Phi-3.5 uses:
-            <|system|>...<|end|>
-            <|user|>...<|end|>
-            <|assistant|>...<|end|>
-
-        Includes conversation history for multi-turn context.
+        Format prompt for chat model.
+        Uses the active tokenizer's chat template if loaded, otherwise falls back to a clean,
+        structured default format.
         """
         from src.core.prompts import DEFAULT_SYSTEM_PROMPT
-
         sys_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
 
-        # System prompt
-        formatted = f"<|system|>\n{sys_prompt}<|end|>\n"
+        if self._tokenizer is not None:
+            messages = []
+            if sys_prompt:
+                messages.append({"role": "system", "content": sys_prompt})
+            for user_msg, assistant_msg in self._conversation_history:
+                messages.append({"role": "user", "content": user_msg})
+                messages.append({"role": "assistant", "content": assistant_msg})
+            messages.append({"role": "user", "content": user_message})
 
-        # Conversation history
+            return self._tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True
+            )
+        
+        # Fallback if tokenizer not loaded (e.g. unit tests)
+        formatted = ""
+        if sys_prompt:
+            formatted += f"<|system|>\n{sys_prompt}<|end|>\n"
         for user_msg, assistant_msg in self._conversation_history:
             formatted += f"<|user|>\n{user_msg}<|end|>\n"
             formatted += f"<|assistant|>\n{assistant_msg}<|end|>\n"
-
-        # Current message
         formatted += f"<|user|>\n{user_message}<|end|>\n"
         formatted += "<|assistant|>\n"
-
         return formatted
 
     def _add_to_history(self, user_msg: str, assistant_msg: str) -> None:

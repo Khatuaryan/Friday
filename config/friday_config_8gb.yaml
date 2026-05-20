@@ -8,6 +8,33 @@ hardware:
   warning_threshold: 0.75   # 75% system RAM = warning
   critical_threshold: 0.85  # 85% system RAM = critical
 
+active_model: "phi-3.5-mini"
+
+models_registry:
+  phi-3.5-mini:
+    repo_id: "mlx-community/Phi-3.5-mini-instruct-4bit"
+    path: "models/phi-3.5-mini-4bit"
+    memory_gb: 2.2
+    context_window: 4096
+
+  gemma-3-12b:
+    repo_id: "mlx-community/gemma-3-12b-it-4bit"
+    path: "models/gemma-3-12b-4bit"
+    memory_gb: 7.0
+    context_window: 8192
+
+  llama-3.1-8b:
+    repo_id: "mlx-community/Meta-Llama-3.1-8B-Instruct-4bit"
+    path: "models/llama-3.1-8b-4bit"
+    memory_gb: 5.0
+    context_window: 8192
+
+  qwen2.5-7b:
+    repo_id: "mlx-community/Qwen2.5-7B-Instruct-4bit"
+    path: "models/qwen2.5-7b-4bit"
+    memory_gb: 4.5
+    context_window: 8192
+
 models:
   llm:
     name: "Phi-3.5-mini-instruct-4bit"
