@@ -41,9 +41,9 @@ class FridayBrain:
         import yaml
         from pathlib import Path
         
-        # Load from friday_config_8gb.yaml if possible
+        # Load from friday_config.yaml if possible
         if not config_path:
-            config_path = Path(__file__).parent.parent.parent / "config" / "friday_config_8gb.yaml"
+            config_path = Path(__file__).parent.parent.parent / "config" / "friday_config.yaml"
             
         config = None
         if Path(config_path).exists():

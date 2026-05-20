@@ -24,8 +24,8 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 
 def load_config() -> dict:
-    """Load configuration from friday_config_8gb.yaml."""
-    config_path = PROJECT_ROOT / "config" / "friday_config_8gb.yaml"
+    """Load configuration from friday_config.yaml."""
+    config_path = PROJECT_ROOT / "config" / "friday_config.yaml"
     if config_path.exists():
         try:
             with open(config_path) as f:

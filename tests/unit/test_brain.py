@@ -87,7 +87,7 @@ class TestFridayBrain:
             }
         }
         import yaml
-        cfg_file = tmp_path / "friday_config_8gb.yaml"
+        cfg_file = tmp_path / "friday_config.yaml"
         with open(cfg_file, "w") as f:
             yaml.dump(config_data, f)
             
@@ -115,7 +115,7 @@ class TestFridayBrain:
             }
         }
         import yaml
-        cfg_file = tmp_path / "friday_config_8gb.yaml"
+        cfg_file = tmp_path / "friday_config.yaml"
         with open(cfg_file, "w") as f:
             yaml.dump(config_data, f)
             

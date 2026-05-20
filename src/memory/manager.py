@@ -260,5 +260,5 @@ class MemoryManager:
 
 
 # ── Global singleton ────────────────────────────────────────
-_config_path = Path(__file__).parent.parent.parent / "config" / "friday_config_8gb.yaml"
+_config_path = Path(__file__).parent.parent.parent / "config" / "friday_config.yaml"
 memory_manager = MemoryManager(config_path=_config_path if _config_path.exists() else None)

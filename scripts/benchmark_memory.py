@@ -120,7 +120,7 @@ def benchmark():
     # ── Save results ──
     results_dir = PROJECT_ROOT / "docs" / "research-paper" / "benchmarks"
     results_dir.mkdir(parents=True, exist_ok=True)
-    results_file = results_dir / "phase0-memory-8gb.txt"
+    results_file = results_dir / "phase0-memory.txt"
 
     with open(results_file, "w") as f:
         f.write(f"FRIDAY Memory Benchmark — {time.strftime('%Y-%m-%d %H:%M:%S')}\n")

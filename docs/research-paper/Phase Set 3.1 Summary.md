@@ -33,7 +33,7 @@ flowchart TB
     %% Cognition and Reasoning Core
     subgraph Brain_Core ["Cognitive Processing & Orchestration"]
         VOICE_LOOP -- "mlx-whisper Transcription" --> BRAIN[Friday Brain Core]
-        YAML[friday_config_8gb.yaml] -- "Dynamic Active Model Coordinates" --> BRAIN
+        YAML[friday_config.yaml] -- "Dynamic Active Model Coordinates" --> BRAIN
         BRAIN -- "apply_chat_template()" --> TOK[HuggingFace Tokenizer]
         TOK -- "Formatted Prompt Template" --> INFERENCE[MLX LM Inference Engine]
     end
@@ -127,7 +127,7 @@ flowchart TB
 
 ### 5. Phase 3.1: Modularity, Dynamic LLM Templates & Camera Selection
 *   **What was made:**
-    *   `config/friday_config_8gb.yaml`: Centrally managed model registry.
+    *   `config/friday_config.yaml`: Centrally managed model registry.
     *   `src/core/brain.py`: Integrated HuggingFace dynamic `apply_chat_template` formatting with string-fallback safety.
     *   `src/modules/vision/face_recognizer.py`: PyObjC-based active microphone-to-camera matching selector.
 *   **Why it was made:**
@@ -264,7 +264,7 @@ The following files represent the complete structural layout of Project F.R.I.D.
 
 | Component Name | Relative File Path | Operations | Purpose |
 | :--- | :--- | :---: | :--- |
-| **Configuration** | [`config/friday_config_8gb.yaml`](file:///Users/khatuaryan/PycharmProjects/Friday/config/friday_config_8gb.yaml) | `[MODIFY]` | Declarative Registry for models and active configs. |
+| **Configuration** | [`config/friday_config.yaml`](file:///Users/khatuaryan/PycharmProjects/Friday/config/friday_config.yaml) | `[MODIFY]` | Declarative Registry for models and active configs. |
 | **Cognition** | [`src/core/brain.py`](file:///Users/khatuaryan/PycharmProjects/Friday/src/core/brain.py) | `[MODIFY]` | Dynamic memory loading, unified reasoning, tokenizer templates. |
 | **Cognition** | [`src/core/prompts.py`](file:///Users/khatuaryan/PycharmProjects/Friday/src/core/prompts.py) | `[MODIFY]` | Dynamic system prompts, VAD context, and dynamic date injections. |
 | **Orchestration** | [`src/core/activation_handler.py`](file:///Users/khatuaryan/PycharmProjects/Friday/src/core/activation_handler.py) | `[MODIFY]` | State machine, TTS stop preemption, and proactive interlocking. |
