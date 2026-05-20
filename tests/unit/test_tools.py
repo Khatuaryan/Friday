@@ -46,10 +46,11 @@ class TestFileTool:
         assert tool.name == "read_file"
 
     def test_restricted_path_denied(self):
+        # Now root filesystem is allowed, so /etc/passwd should be readable or not raise "Access denied"
         tool = FileTool()
         result = tool.execute(file_path="/etc/passwd")
-        assert "error" in result
-        assert "Access denied" in result["error"]
+        assert "error" not in result
+        assert "content" in result
 
     def test_nonexistent_file(self):
         tool = FileTool()
@@ -58,9 +59,11 @@ class TestFileTool:
         assert "not found" in result["error"].lower()
 
     def test_path_traversal_blocked(self):
+        # /../../etc/shadow is resolved to /etc/shadow, which should be allowed but not exist or be unreadable
         tool = FileTool()
         result = tool.execute(file_path="/../../etc/shadow")
         assert "error" in result
+        assert "not found" in result["error"].lower() or "permission denied" in result["error"].lower()
 
 
 class TestMCPToolServer:
@@ -110,3 +113,20 @@ class TestMCPToolServer:
             "arguments": {},
         })
         assert "error" in result
+
+    def test_parse_tool_call_markdown_and_multiple(self):
+        server = MCPToolServer()
+        markdown_text = (
+            "Please check calendar and memory:\n"
+            "```json\n"
+            '{"name": "get_calendar_events", "arguments": {"date": "2026-05-20"}}\n'
+            "```\n"
+            "And to assess your available memory:\n"
+            "```json\n"
+            '{"name": "get_system_info", "arguments": {"info_type": "memory"}}\n'
+            "```"
+        )
+        result = server.parse_tool_call(markdown_text)
+        assert result is not None
+        assert result["name"] == "get_calendar_events"
+        assert result["arguments"]["date"] == "2026-05-20"

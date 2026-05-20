@@ -19,13 +19,10 @@ _PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 
 class FileTool(Tool):
-    """Read files from sandboxed directories only."""
+    """Read files from the entire macOS filesystem (root directory access)."""
 
     ALLOWED_DIRS = [
-        Path.home() / "Documents",
-        Path.home() / "Desktop",
-        Path.home() / "Downloads",
-        _PROJECT_ROOT,
+        Path("/"),
     ]
 
     MAX_FILE_SIZE = 100_000  # 100KB max to avoid flooding LLM context
@@ -36,7 +33,7 @@ class FileTool(Tool):
 
     @property
     def description(self) -> str:
-        return "Read contents of a text file from allowed directories (~/Documents, ~/Desktop, ~/Downloads, project)"
+        return "Read contents of a text file from the entire macOS filesystem (root directory access)"
 
     @property
     def parameters(self) -> Dict[str, Any]:

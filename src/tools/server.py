@@ -57,10 +57,9 @@ class MCPToolServer:
         Parse <tool_call> block from LLM response.
         
         More robust parsing that handles slightly malformed tags, missing closing tags,
-        or completely missing tags if the model just outputs JSON.
+        or completely missing tags if the model just outputs JSON. Supports balanced-brace
+        scanning to find and isolate individual JSON objects out of text.
         """
-        content = None
-        
         # 1. Look for <tool_call> and then any JSON-like structure following it
         match = re.search(
             r"<tool_call>(.*?)(?:</tool_call>|$)",
@@ -70,54 +69,107 @@ class MCPToolServer:
 
         if match:
             content = match.group(1).strip()
-        else:
-            # 2. Fallback: if no tags, check if the response itself looks like a tool JSON
-            if '"name"' in response_text and '"arguments"' in response_text:
-                content = response_text.strip()
+            # If tags found, let's extract the JSON candidate from it
+            if "{" in content:
+                start_idx = content.find("{")
+                end_idx = content.rfind("}")
+                if end_idx > start_idx:
+                    content_candidate = content[start_idx:end_idx+1]
+                else:
+                    content_candidate = content[start_idx:]
             else:
-                return None
-        
-        # If the LLM included trailing text after the JSON, try to find the JSON part
-        # by looking for the first { and the corresponding last }
-        if content and "{" in content:
-            start_idx = content.find("{")
-            end_idx = content.rfind("}")
-            if end_idx > start_idx:
-                # Basic extraction
-                content_candidate = content[start_idx:end_idx+1]
-            else:
-                content_candidate = content[start_idx:]
-        else:
-            content_candidate = content
+                content_candidate = content
+            
+            return self._parse_json_with_repair(content_candidate)
 
+        # 2. Fallback: Scan response_text for any balanced JSON-like objects containing "name" and "arguments"
+        candidates = []
+        start = 0
+        while True:
+            pos = response_text.find("{", start)
+            if pos == -1:
+                break
+            
+            brace_count = 0
+            in_string = False
+            escape = False
+            end = -1
+            
+            for i in range(pos, len(response_text)):
+                char = response_text[i]
+                if escape:
+                    escape = False
+                    continue
+                if char == "\\":
+                    escape = True
+                    continue
+                if char == '"':
+                    in_string = not in_string
+                    continue
+                if not in_string:
+                    if char == "{":
+                        brace_count += 1
+                    elif char == "}":
+                        brace_count -= 1
+                        if brace_count == 0:
+                            end = i
+                            break
+            
+            if end != -1:
+                candidate = response_text[pos:end+1]
+                candidates.append(candidate)
+                start = pos + 1
+            else:
+                # If we couldn't find a matching closing brace, we might have an incomplete JSON
+                # Let's take the rest of the string starting from pos and try to repair it later
+                candidate = response_text[pos:]
+                candidates.append(candidate)
+                break
+
+        # Check candidates for a valid tool call
+        for candidate in candidates:
+            # Must look like a tool call JSON with name and arguments
+            if '"name"' in candidate and '"arguments"' in candidate:
+                parsed = self._parse_json_with_repair(candidate)
+                if parsed and "name" in parsed:
+                    return parsed
+
+        return None
+
+    def _parse_json_with_repair(self, content_candidate: str) -> Optional[Dict[str, Any]]:
+        """Attempt to parse the candidate string as JSON with auto-repair capability."""
         if not content_candidate:
             return None
 
-        # Auto-repair: Small models often drop the final '}'
-        # We will try parsing, and if it fails due to expecting a delimiter, we add '}'
+        # Clean up any potential markdown code fence markers around or inside
+        content_candidate = content_candidate.strip()
+        if content_candidate.startswith("```json"):
+            content_candidate = content_candidate[7:].strip()
+        elif content_candidate.startswith("```"):
+            content_candidate = content_candidate[3:].strip()
+        if content_candidate.endswith("```"):
+            content_candidate = content_candidate[:-3].strip()
+
         try:
             tool_call = json.loads(content_candidate)
+            return tool_call
         except json.JSONDecodeError as e:
             # Attempt auto-repair by adding a closing brace
             try:
                 repaired = content_candidate + "}"
                 tool_call = json.loads(repaired)
                 logger.info("Auto-repaired missing JSON brace in tool call")
+                return tool_call
             except json.JSONDecodeError:
                 # If it still fails, try adding two closing braces just in case
                 try:
                     repaired = content_candidate + "}}"
                     tool_call = json.loads(repaired)
                     logger.info("Auto-repaired missing JSON braces in tool call")
+                    return tool_call
                 except json.JSONDecodeError:
                     logger.error("Failed to parse tool call JSON: %s. Content: %s", e, content_candidate)
                     return None
-
-        if "name" not in tool_call:
-            logger.error("Tool call missing 'name' field: %s", content_candidate)
-            return None
-            
-        return tool_call
 
     def execute_tool(self, tool_call: Dict[str, Any]) -> Dict[str, Any]:
         """
