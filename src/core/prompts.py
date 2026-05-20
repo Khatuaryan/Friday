@@ -62,10 +62,15 @@ Do NOT mention that you can see their screen — you only know the active app na
 
 def format_context_prompt(base_prompt: str, active_app: dict = None, rag_context: list = None) -> str:
     """
-    Appends active context (window, app) and RAG memory retrieved context
-    to the base system prompt.
+    Appends active context (window, app), RAG memory retrieved context,
+    and current dynamic system date/time to the base system prompt.
     """
+    import datetime
     prompt = base_prompt
+    
+    # Inject dynamic date and time so the model knows today's date for tool calling (like get_calendar_events)
+    now = datetime.datetime.now()
+    prompt += f"\n\n[System Date and Time: {now.strftime('%A, %B %d, %Y at %I:%M %p')}]"
     
     if active_app:
         app_name = active_app.get("app", "Unknown")

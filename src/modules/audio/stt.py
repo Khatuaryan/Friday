@@ -224,6 +224,13 @@ class SpeechToText:
         text = result.get("text", "").strip()
 
         logger.info("Transcribed in %.2fs: '%s'", latency, text)
+
+        try:
+            import mlx.core as mx
+            mx.clear_cache()
+        except Exception:
+            pass
+
         return text
 
     def transcribe_file(self, audio_path: str) -> str:
@@ -247,6 +254,13 @@ class SpeechToText:
 
         text = result.get("text", "").strip()
         logger.info("File transcription: '%s'", text)
+
+        try:
+            import mlx.core as mx
+            mx.clear_cache()
+        except Exception:
+            pass
+
         return text
 
     @property

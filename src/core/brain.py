@@ -125,9 +125,10 @@ class FridayBrain:
         if not self._loaded:
             raise RuntimeError("Model not loaded. Call load_model() first.")
 
-        # Ensure MLX GPU stream is ready for this thread
+        # Ensure MLX GPU stream is ready for this thread and cache is cleared to prevent Metal OOM
         import mlx.core as mx
         mx.default_stream(mx.gpu)
+        mx.clear_cache()
 
         prompt = self._format_prompt(user_message, system_prompt)
 
@@ -155,6 +156,12 @@ class FridayBrain:
 
         if add_to_history:
             self._add_to_history(user_message, response_text)
+
+        # Clear Metal cache after generation to release allocated memory immediately
+        try:
+            mx.clear_cache()
+        except Exception:
+            pass
 
         return response_text
 
@@ -242,9 +249,10 @@ class FridayBrain:
         if not self._loaded:
             raise RuntimeError("Model not loaded. Call load_model() first.")
 
-        # Ensure MLX GPU stream is ready for this thread
+        # Ensure MLX GPU stream is ready for this thread and cache is cleared to prevent Metal OOM
         import mlx.core as mx
         mx.default_stream(mx.gpu)
+        mx.clear_cache()
 
         prompt = self._format_prompt(user_message, system_prompt)
 
@@ -273,6 +281,12 @@ class FridayBrain:
 
         # Commit to history after stream completes
         self._add_to_history(user_message, full_response.strip())
+
+        # Clear Metal cache after generation to release allocated memory immediately
+        try:
+            mx.clear_cache()
+        except Exception:
+            pass
 
     def _format_prompt(self, user_message: str, system_prompt: str | None = None) -> str:
         """
@@ -396,7 +410,7 @@ class FridayBrain:
 
             try:
                 import mlx.core as mx
-                mx.metal.clear_cache()
+                mx.clear_cache()
             except Exception:
                 pass
 
