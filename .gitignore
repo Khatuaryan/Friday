@@ -11,9 +11,7 @@ __pycache__/
 *.pem
 
 # Models (too large for Git)
-models/phi-3.5-mini-4bit/
-models/distil-whisper-small/
-models/piper-tts/
+models/
 
 # Data
 data/faces/*.pkl
