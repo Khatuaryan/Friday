@@ -46,6 +46,16 @@ class TextToSpeech:
         self._speaking = False
         self._lock = threading.Lock()
         self._stop_flag = threading.Event()
+        self._preempted = False
+
+    def reset_preempt(self) -> None:
+        """Reset preemption flag to allow new speech."""
+        self._preempted = False
+
+    def preempt(self) -> None:
+        """Set preemption flag and stop speech."""
+        self._preempted = True
+        self.stop()
 
     def speak(self, text: str, blocking: bool = True) -> None:
         """
@@ -55,6 +65,10 @@ class TextToSpeech:
             text: Text to speak.
             blocking: If True, wait for speech to finish.
         """
+        if self._preempted:
+            logger.warning("Speech blocked due to active preemption: '%s'", text[:50] + "..." if len(text) > 50 else text)
+            return
+
         if not text or not text.strip():
             return
 
@@ -124,6 +138,7 @@ class TextToSpeech:
     def stop(self) -> None:
         """Stop current speech and clear queue."""
         self._stop_flag.set()
+        self._preempted = True
 
         # Drain queue
         while not self._queue.empty():

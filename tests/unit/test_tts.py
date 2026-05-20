@@ -43,3 +43,22 @@ class TestTextToSpeech:
         """TTS must have a threading Lock to prevent race conditions."""
         tts = TextToSpeech()
         assert isinstance(tts._lock, type(threading.Lock()))
+
+    def test_preemption_blocks_speak(self):
+        """Preemption should block subsequent speak() calls."""
+        tts = TextToSpeech()
+        tts.stop()  # This sets _preempted = True
+        assert tts._preempted
+
+        # Subsequent speak calls should not queue anything
+        tts.speak("Hello", blocking=False)
+        assert tts._queue.empty()
+
+        # Reset preemption should allow speaking again
+        tts.reset_preempt()
+        assert not tts._preempted
+        tts.speak("Hello", blocking=False)
+        assert tts.is_speaking
+        
+        # Clean up
+        tts.stop()

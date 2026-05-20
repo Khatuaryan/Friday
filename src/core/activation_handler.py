@@ -128,13 +128,12 @@ class ActivationHandler:
 
     def _queue_wake_word(self) -> None:
         """Internal callback from detector thread — just queues the event."""
-        # Preempt active TTS immediately if the wake word triggers during output speech
+        # Preempt active interaction immediately if the wake word triggers during speech or processing
         if (
             self._state in (ActivationState.SPEAKING, ActivationState.PROCESSING)
             and self._tts
-            and self._tts.is_speaking
         ):
-            logger.info("Wake word detected during active TTS. Preempting immediately!")
+            logger.info("Wake word detected during active interaction. Preempting immediately!")
             self._tts.stop()
 
         self._event_queue.put("wake_word")
@@ -199,6 +198,8 @@ class ActivationHandler:
             return
 
         try:
+            if self._tts:
+                self._tts.reset_preempt()
             self._set_state(ActivationState.SPEAKING)
             self._tts.speak("Hey Boss, how can I help?", blocking=True)
 
