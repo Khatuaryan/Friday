@@ -69,11 +69,25 @@ class VisionFaceRecognizer:
     @staticmethod
     def get_default_camera_index() -> int:
         """
-        Attempts to find the index of the built-in FaceTime HD Camera.
+        Attempts to find the index of the camera that matches the active audio input.
+        If using iPhone microphone, prefers the iPhone Continuity camera.
+        If using Mac microphone, prefers the built-in FaceTime HD camera.
         Returns 0 if not found or on error.
         """
         try:
             import AVFoundation
+            
+            # 1. Determine active audio input device
+            default_audio = AVFoundation.AVCaptureDevice.defaultDeviceWithMediaType_(
+                AVFoundation.AVMediaTypeAudio
+            )
+            audio_name = default_audio.localizedName().lower() if default_audio else ""
+            logger.info("Active audio input: %s", audio_name or "Unknown")
+            
+            # Check if active mic is an iPhone/iOS mic
+            is_ios_audio = "iphone" in audio_name or "ios" in audio_name
+            
+            # 2. Discover video devices
             discovery_session = AVFoundation.AVCaptureDeviceDiscoverySession.discoverySessionWithDeviceTypes_mediaType_position_(
                 [
                     AVFoundation.AVCaptureDeviceTypeBuiltInWideAngleCamera,
@@ -85,17 +99,27 @@ class VisionFaceRecognizer:
             )
             devices = discovery_session.devices()
 
-            # Prefer built-in FaceTime HD Camera
-            for i, device in enumerate(devices):
+            # 3. Match video device to audio device
+            has_ios_camera = False
+            for device in devices:
                 name = device.localizedName().lower()
-                if "facetime" in name or "built-in" in name:
-                    logger.info("Found built-in camera: %s at index %d", device.localizedName(), i)
-                    return i
-
-            # Fallback to index 0
-            if devices:
-                logger.info("Using default camera: %s at index 0", devices[0].localizedName())
-            return 0
+                if "iphone" in name or "ios" in name or "continuity" in name:
+                    has_ios_camera = True
+                    break
+            
+            # OpenCV on macOS Ventura+ maps Continuity Camera to index 0,
+            # and pushes the built-in FaceTime HD Camera to index 1.
+            # If the iOS camera is NOT present, FaceTime HD is at index 0.
+            
+            if is_ios_audio and has_ios_camera:
+                logger.info("Matched iOS camera to iOS microphone. Using OpenCV index 0.")
+                return 0
+            elif not is_ios_audio and has_ios_camera:
+                logger.info("Matched Mac camera to Mac microphone. iPhone is connected, so Mac camera is pushed to OpenCV index 1.")
+                return 1
+            else:
+                logger.info("No Continuity camera detected. Using default OpenCV index 0.")
+                return 0
 
         except Exception as e:
             logger.debug("Camera discovery failed: %s", e)

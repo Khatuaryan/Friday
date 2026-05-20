@@ -158,23 +158,75 @@ class FridayBrain:
 
         return response_text
 
-    def think_with_memory_and_context(self, user_message: str) -> str:
-        """Thinks using RAG memory and active context."""
-        from src.core.prompts import DEFAULT_SYSTEM_PROMPT, format_context_prompt
+    def think_with_memory_and_context(self, user_message: str, max_tool_calls: int = 3) -> str:
+        """Thinks using RAG memory, active context, and tool-calling support."""
+        import json
+        from src.core.prompts import TOOL_CALLING_PROMPT, format_context_prompt
+        from src.tools.server import MCPToolServer
         
         rag_context = []
         active_app = None
         
+        # 1. Fetch RAG memories (skip if CRITICAL system pressure and not overridden)
         if self.memory_store:
-            rag_context = self.memory_store.search(user_message, limit=3)
+            from src.memory.manager import memory_manager, PressureLevel
+            import os
+            
+            status = memory_manager.get_status()
+            buffer_val = float(os.getenv("FRIDAY_MEM_BUFFER", 1.0))
+            
+            # Skip RAG search only if memory is CRITICAL and no force override
+            if status.pressure_level == PressureLevel.CRITICAL and buffer_val > 0.5:
+                logger.warning("System memory is CRITICAL. Skipping RAG search to conserve memory.")
+            else:
+                try:
+                    rag_context = self.memory_store.search(user_message, limit=3)
+                except Exception as e:
+                    logger.warning(f"RAG search failed: {e}")
+                    
             self.memory_store.add_conversation_turn("user", user_message)
             
+        # 2. Fetch active application context
         if self.context_tracker:
             active_app = self.context_tracker.get_current_context()
             
-        system_prompt = format_context_prompt(DEFAULT_SYSTEM_PROMPT, active_app, rag_context)
+        # 3. Setup Tool Server
+        tool_server = MCPToolServer()
+        tools_desc = tool_server.get_tools_description()
+        base_tool_prompt = f"{TOOL_CALLING_PROMPT}\n\nAvailable tools:\n{tools_desc}"
         
-        response = self.think(user_message, system_prompt=system_prompt, add_to_history=True)
+        # 4. Construct System Prompt
+        system_prompt = format_context_prompt(base_tool_prompt, active_app, rag_context)
+        
+        # First pass: ask the LLM
+        response = self.think(
+            user_message, system_prompt=system_prompt, add_to_history=False
+        )
+
+        tool_calls_made = 0
+        while tool_calls_made < max_tool_calls:
+            tool_call = tool_server.parse_tool_call(response)
+            if not tool_call:
+                break  # No tool call — done
+
+            # Execute tool
+            tool_result = tool_server.execute_tool(tool_call)
+            logger.info("Tool %s result: %s", tool_call.get("name"), tool_result)
+
+            # Feed result back as a new user message
+            follow_up = (
+                f"Tool '{tool_call['name']}' returned: {json.dumps(tool_result)}\n\n"
+                "Provide a natural language response based on this result. "
+                "If you need to call another tool to proceed, you can output another tool call."
+            )
+            response = self.think(
+                follow_up, system_prompt=system_prompt, add_to_history=False
+            )
+
+            tool_calls_made += 1
+
+        # Commit only the original user message and final response to history
+        self._add_to_history(user_message, response)
         
         if self.memory_store:
             self.memory_store.add_conversation_turn("assistant", response)

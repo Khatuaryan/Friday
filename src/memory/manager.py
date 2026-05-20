@@ -129,11 +129,16 @@ class MemoryManager:
         Check if it is safe to load a model of the given size.
         
         Leaves a configurable buffer for safety (default 1.0 GB).
+        If FRIDAY_MEM_BUFFER < 0, bypasses all checks completely.
         """
         # Allow overriding buffer for constrained 8GB systems
         import os
         buffer_gb = float(os.getenv("FRIDAY_MEM_BUFFER", 1.0))
         
+        if buffer_gb < 0:
+            logger.warning("FRIDAY_MEM_BUFFER is negative. Bypassing all memory checks for model load.")
+            return True
+            
         status = self.get_status()
         projected = status.friday_rss_gb + model_size_gb
         budget_ok = projected <= self.friday_budget_gb

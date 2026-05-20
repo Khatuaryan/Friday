@@ -131,7 +131,11 @@ class TextToSpeech:
         except subprocess.TimeoutExpired:
             logger.warning("macOS `say` timed out after 300s")
         except subprocess.CalledProcessError as e:
-            logger.error("macOS `say` failed: %s", e.stderr)
+            # Ignore SIGTERM (-15) from intentional stop()
+            if e.returncode != -15 and not self._preempted:
+                logger.error("macOS `say` failed: %s", e.stderr)
+            else:
+                logger.debug("macOS `say` terminated due to preemption or stop request")
         except FileNotFoundError:
             logger.error("macOS `say` command not found — is this macOS?")
 
