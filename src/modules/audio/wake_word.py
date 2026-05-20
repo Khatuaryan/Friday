@@ -84,10 +84,19 @@ class WakeWordDetector:
         from src.memory.manager import memory_manager, PressureLevel
         status = memory_manager.get_status()
         if status.pressure_level == PressureLevel.CRITICAL:
-            raise MemoryError(
-                f"Cannot start wake word: critical memory pressure "
-                f"({status.percent:.1f}% used)"
-            )
+            import os
+            # Allow developer to override critical blocks for extreme RAM environments
+            buffer_val = float(os.getenv("FRIDAY_MEM_BUFFER", 1.0))
+            if buffer_val <= 0.5:
+                logger.warning(
+                    f"System memory is CRITICAL ({status.percent:.1f}% used), "
+                    f"but proceeding due to FRIDAY_MEM_BUFFER override."
+                )
+            else:
+                raise MemoryError(
+                    f"Cannot start wake word: critical memory pressure "
+                    f"({status.percent:.1f}% used)"
+                )
 
         # Load OpenWakeWord model
         from openwakeword.model import Model as OWWModel

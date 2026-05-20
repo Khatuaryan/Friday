@@ -33,7 +33,16 @@ class EmbeddingModel:
 
         status = memory_manager.get_status()
         if status.pressure_level == PressureLevel.CRITICAL:
-            raise MemoryError("System memory is CRITICAL. Refusing to load embedding model.")
+            import os
+            # Allow developer to override critical blocks for extreme RAM environments
+            buffer_val = float(os.getenv("FRIDAY_MEM_BUFFER", 1.0))
+            if buffer_val <= 0.5:
+                logger.warning(
+                    f"System memory is CRITICAL ({status.percent:.1f}% used), "
+                    f"but proceeding with embedding load due to FRIDAY_MEM_BUFFER override."
+                )
+            else:
+                raise MemoryError("System memory is CRITICAL. Refusing to load embedding model.")
 
         if not self.onnx_path.exists() or not self.tokenizer_path.exists():
             raise FileNotFoundError(f"Missing ONNX models at {self.model_dir}. Run download script.")
