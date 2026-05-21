@@ -1,6 +1,6 @@
 # Project F.R.I.D.A.Y. Developer Preferences & Guidelines
 
-This document serves as the persistent feedback and engineering guidelines file for Project F.R.I.D.A.Y. It catalogs all critical architectural constraints, user preferences, bug resolutions, and lessons learned across Phase Sets 1, 2, and 3. **Future AI development sessions must load and strictly adhere to these rules.**
+This document serves as the persistent feedback, preference, and engineering guidelines file for Project F.R.I.D.A.Y. It catalogs all critical architectural constraints, user corrections, stated preferences, bug resolutions, and lessons learned. **Future AI development sessions must load and strictly adhere to these rules.**
 
 ---
 
@@ -85,22 +85,34 @@ To guarantee absolute confidentiality, no user data or conversation history may 
 
 ---
 
-## 🗣️ 5. Voice Activation & state-Aware TTS Arbitration
+## 🗣️ 5. Voice Activation & State-Aware TTS Arbitration
 
 *   **PyAudio Buffer "Silent Deafness" Bug:**
     *   *Bug:* PyAudio's `in_data` buffer creates a temporary memory view that macOS reclaims as soon as the PyAudio C-callback returns, leading to corrupted silence or static feed to the LLM.
     *   *Resolution:* Always make an immediate copy of the buffer into Python-managed memory: `data = in_data.copy()`.
 *   **Continuity Camera Conflict:**
     *   *Bug:* On modern macOS Ventura+, system vision calls default to Continuity Camera (nearby user iPhone), creating heavy lag and wrong perspectives.
-    *   *Resolution:* Explicitly filter and prioritize native hardware devices (e.g. "FaceTime HD Camera") inside `AVCaptureDevice` discovery.
-*   **Overlapping Speech Contention:**
+    *   *Resolution:* Explicitly filter and prioritize native hardware devices (e.g., "FaceTime HD Camera") inside `AVCaptureDevice` discovery and match device selection index dynamically to where audio/voice activation was detected.
+*   **Overlapping Speech Contention & Instant Preemption:**
     *   *Rule 1 (State-Aware Deferral):* Background threads (such as the Proactive Daemon) must check `activation_handler.state` before playing TTS. If the system is in an active state other than `IDLE` or `LISTENING`, defer speaking and push messages to a bounded queue (FIFO, maxlen=5) to retry on the next cycle.
-    *   *Rule 2 (Immediate Wake-Word Preemption):* When a wake word is detected, the `ActivationHandler` must immediately issue a preemptive voice clear (`tts.stop()`) which triggers a macOS `killall say` and flushes all audio buffers. This guarantees instant assistant responsiveness.
+    *   *Rule 2 (Preemptive Preemption):* When the wake word triggers during TTS playback, the system must immediately call `tts.stop()`, executing `killall say` at the shell level and flushing all queues instantly to ensure zero post-preemption speaking lag.
+    *   *Rule 3 (Ignorable Process Exit Noise):* Terminating `say` with `SIGTERM` (exit code `-15`) throws a `subprocess.CalledProcessError`. Filter this output so it is ignored rather than logged as a system error.
 
 ---
 
-## 🧠 6. Brain Generation Tuning (Phi-3.5-mini-Instruct)
+## 🧠 6. Unified Brain Reasoning & Prompt Engineering
 
+*   **Unified Execution Cycle (`think_full`):**
+    *   *Correction:* Never run two parallel logic flows for reasoning (e.g. one for RAG context and another for tool calling). 
+    *   *Architecture:* Always execute a single unified cycle:
+        $$\text{Cocoa/App Context} + \text{Dynamic DateTime} \rightarrow \text{sqlite-vec RAG lookup} \rightarrow \text{Tool Calling Loop} \rightarrow \text{Concise Summary}$$
+*   **Tool Calling Speed Optimization (Sub-Second Cycles):**
+    *   *Rule:* During intermediate tool calls, the model must output **only** the `<tool_call>` XML tag block with zero conversational preamble, intros, or markdown lists. conversational padding adds 2-3 seconds of unnecessary delay.
+*   **Strict Verbal Response word Constraints:**
+    *   *Stated Preference:* Final answers read aloud by the TTS engine must be kept extremely concise, direct, and **strictly under 50 words (max 300 characters)**. Long, rambling answers get truncated by macOS TTS or cause major speaking lags.
+*   **Tool Call Constraints & Hallucination Defense:**
+    *   *Rule:* The local 3.8B model under memory/CPU strain will hallucinate unregistered tools (e.g., Safari, Terminal, open_url). The prompt must strictly limit it to the registered tools (`get_calendar_events`, `read_file`, and `get_system_info`).
+    *   *Query Inputs:* Never use input wildcards (like `*`) in file reading paths. For system queries, use `memory` or `storage` (never use `ram`).
 *   **Repetition Loops under RAM Pressure:**
     *   *Rule:* Under high memory strain, the local 3.8B model will repeat tokens infinitely. Mitigate this by applying a strict **Repetition Penalty (1.1)** inside the logits processors.
 *   **Strict Stream Exit:**
@@ -110,12 +122,28 @@ To guarantee absolute confidentiality, no user data or conversation history may 
 
 ---
 
-## ⚡ 7. Developer Hints & Debugging Lessons
+## ⚙️ 7. Multi-Model Swaps, Registry & Config Management
+
+*   **Model-Agnostic Prompt Templates:**
+    *   *Correction:* Never hardcode prompt formatting tokens (like Phi-3.5's `<|system|>` / `<|user|>`). Different models use completely different structures (e.g., Gemma's `<start_of_turn>`).
+    *   *Resolution:* Load chat templates dynamically from the loaded tokenizer using `self._tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)`. This guarantees seamless model-swaps without code edits.
+*   **Config Registry Architecture:**
+    *   *Stated Preference:* Manage all active model selections inside a centralized config registry (`config/friday_config.yaml`). Future model upgrades should be a single-line YAML change once the model weights are retrieved.
+*   **Generic Naming Protocols:**
+    *   *Stated Preference:* **Absolute prohibition on using developer-specific, machine-specific, or personal names in files** (such as `_8gb.yaml` or `mac`). Keep all config names and templates generic and unified (like `friday_config.yaml`).
+*   **Git Exclusions for Heavy Weights:**
+    *   *Rule:* Large binary objects, including `tokenizer.json` and ONNX model files (like `model_quantized.onnx`), must never be tracked or committed to Git. Add them to `.gitignore` and load/download them dynamically via setup scripts.
+
+---
+
+## ⚡ 8. Developer Hints & Debugging Lessons
 
 *   **Mac OS Dynamic Permissions Semaphores:**
     *   *Lesson:* Asynchronous macOS security popups (like calendar access via `EKEventStore`) crash or hang CLI tools. Wrap permission callbacks in a thread semaphore (`threading.Semaphore(0)`) to cleanly block execution until the user clicks "Allow" or "Deny".
 *   **SQLite Extension Loader:**
     *   *Lesson:* Always call `conn.enable_load_extension(True)` before attempting to load compiled external libraries like `sqlite-vec`.
+*   **Unrestricted Sandbox File System Scope:**
+    *   *Stated Preference:* The system FileTool must have unrestricted access starting from the root directory (`Path("/")`) to allow the assistant to inspect any files on the user's MacOS system.
 *   **System RAM Safety Buffer:**
-    *   *Lesson:* Maintain a **1.0GB System Safety Buffer** in the memory manager. If available system RAM is less than (Model RAM + 1GB), refuse model loading.
+    *   *Lesson:* Maintain a **1.0GB System Safety Buffer** in the memory manager. If available system RAM is less than (Model RAM + 1GB), refuse model loading to avoid critical macOS swapping and Metal memory exceptions (`OutOfMemory` buffer aborts).
     *   *Override:* For heavy development environments, support a dynamic override via `FRIDAY_MEM_BUFFER` environment variable down to **0.5GB** but no lower.
