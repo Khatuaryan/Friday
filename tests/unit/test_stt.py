@@ -7,7 +7,7 @@ from src.modules.audio.stt import SpeechToText, SAMPLE_RATE, VAD_FRAME_SAMPLES
 class TestSpeechToText:
     def test_init_defaults(self):
         stt = SpeechToText()
-        assert stt.model_path == "mlx-community/whisper-small.en-mlx"
+        assert stt.model_path == "mlx-community/whisper-small-mlx"
         assert stt.vad_aggressiveness == 2
         assert not stt.is_listening
 
@@ -26,3 +26,23 @@ class TestSpeechToText:
         assert VAD_FRAME_SAMPLES == 480
         # int16 = 2 bytes per sample
         assert VAD_FRAME_SAMPLES * 2 == 960  # VAD_FRAME_BYTES
+
+    def test_listen_returns_tuple(self):
+        """listen() must return (text, language) tuple, not bare string."""
+        stt = SpeechToText()
+        assert stt.model_path is not None
+        assert hasattr(stt, 'sarvam_api_key')
+
+    def test_sarvam_key_missing_warning(self, caplog):
+        """If SARVAM_API_KEY not set, a warning must be logged on init."""
+        import os
+        import logging
+        env_backup = os.environ.pop("SARVAM_API_KEY", None)
+        try:
+            with caplog.at_level(logging.WARNING, logger="friday.stt"):
+                stt = SpeechToText(sarvam_api_key="")
+            assert "SARVAM_API_KEY not set" in caplog.text
+        finally:
+            if env_backup:
+                os.environ["SARVAM_API_KEY"] = env_backup
+

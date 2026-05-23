@@ -17,7 +17,8 @@ import queue
 import threading
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
+
 
 import numpy as np
 
@@ -46,21 +47,36 @@ class SpeechToText:
 
     def __init__(
         self,
-        model_path: str = "mlx-community/whisper-small.en-mlx",
+        model_path: str = "mlx-community/whisper-small-mlx",
         vad_aggressiveness: int = 2,
+        sarvam_api_key: Optional[str] = None,
     ) -> None:
         """
         Args:
             model_path: HuggingFace repo ID or local path for mlx-whisper.
             vad_aggressiveness: WebRTC VAD aggressiveness 0-3 (higher = stricter).
+            sarvam_api_key: Optional Sarvam AI API subscription key for Hindi STT.
         """
+        import os
         self.model_path = model_path
         self.vad_aggressiveness = vad_aggressiveness
+        self.sarvam_api_key = sarvam_api_key or os.getenv("SARVAM_API_KEY", "")
+
+        if not self.sarvam_api_key:
+            logger.warning(
+                "SARVAM_API_KEY not set. Hindi STT will fall back to "
+                "local whisper (lower accuracy for Hindi)."
+            )
 
         self._audio_queue: queue.Queue[np.ndarray] = queue.Queue(maxsize=200)
         self._is_listening = False
 
-    def listen(self, timeout: float = 10.0, silence_duration: float = 1.5) -> str:
+
+    def listen(
+        self,
+        timeout: float = 10.0,
+        silence_duration: float = 1.5,
+    ) -> Tuple[str, str]:
         """
         Record audio until silence detected or timeout, then transcribe.
 
@@ -69,7 +85,8 @@ class SpeechToText:
             silence_duration: Seconds of continuous silence to auto-stop.
 
         Returns:
-            Transcribed text, or empty string if no speech detected.
+            Tuple of (Transcribed text, detected_language), or ("", "en") if no speech detected.
+
 
         Architecture:
             1. PyAudio callback enqueues raw int16 chunks (fast, no processing)
@@ -184,7 +201,7 @@ class SpeechToText:
         # --- Transcribe ---
         if not audio_buffer:
             logger.info("No audio captured")
-            return ""
+            return "", "en"
 
         audio_data = np.concatenate(audio_buffer, axis=0)
         duration = len(audio_data) / SAMPLE_RATE
@@ -192,19 +209,20 @@ class SpeechToText:
 
         if duration < 0.3:
             logger.info("Audio too short (%.1fs), skipping transcription", duration)
-            return ""
+            return "", "en"
 
         return self._transcribe(audio_data)
 
-    def _transcribe(self, audio_data: np.ndarray) -> str:
+    def _transcribe(self, audio_data: np.ndarray) -> Tuple[str, str]:
         """
-        Transcribe audio using mlx-whisper.
+        Transcribe audio using mlx-whisper with language auto-detection.
+        If Hindi is detected, route to Sarvam AI API for transcription.
 
         Args:
             audio_data: NumPy int16 array of audio samples at 16kHz.
 
         Returns:
-            Transcribed text.
+            Tuple of (Transcribed text, detected_language)
         """
         import mlx_whisper
 
@@ -213,17 +231,19 @@ class SpeechToText:
 
         start = time.perf_counter()
 
+        # Let Whisper auto-detect language
         result = mlx_whisper.transcribe(
             audio_float,
             path_or_hf_repo=self.model_path,
-            language="en",
+            language=None,
             fp16=False,
         )
 
         latency = time.perf_counter() - start
+        detected_lang = result.get("language", "en")
         text = result.get("text", "").strip()
 
-        logger.info("Transcribed in %.2fs: '%s'", latency, text)
+        logger.info("Local Whisper detected language '%s' and transcribed in %.2fs: '%s'", detected_lang, latency, text)
 
         try:
             import mlx.core as mx
@@ -231,9 +251,66 @@ class SpeechToText:
         except Exception:
             pass
 
-        return text
+        # If detected Hindi, route to Sarvam AI API
+        if detected_lang == "hi":
+            if self.sarvam_api_key:
+                logger.info("Hindi detected. Routing audio to Sarvam AI API...")
+                sarvam_text = self._transcribe_sarvam(audio_data)
+                if sarvam_text:
+                    return sarvam_text, "hi"
+                else:
+                    logger.warning("Sarvam API failed. Falling back to local Whisper transcription.")
+            else:
+                logger.warning("Hindi detected but SARVAM_API_KEY not set. Using local Whisper transcription.")
 
-    def transcribe_file(self, audio_path: str) -> str:
+        return text, detected_lang
+
+    def _transcribe_sarvam(self, audio_data: np.ndarray) -> str:
+        """
+        Send raw audio data to the Sarvam AI Speech-to-Text API.
+
+        Privacy Note: Audio data leaves the local device here.
+        """
+        import io
+        import wave
+        import httpx
+
+        # Convert int16 NumPy array to WAV bytes
+        wav_buffer = io.BytesIO()
+        with wave.open(wav_buffer, "wb") as wav_file:
+            wav_file.setnchannels(CHANNELS)
+            wav_file.setsampwidth(2)  # int16 = 2 bytes
+            wav_file.setframerate(SAMPLE_RATE)
+            wav_file.writeframes(audio_data.tobytes())
+        wav_buffer.seek(0)
+
+        try:
+            # POST multipart/form-data as specified in Sarvam AI docs
+            response = httpx.post(
+                "https://api.sarvam.ai/speech-to-text",
+                headers={
+                    "api-subscription-key": self.sarvam_api_key,
+                },
+                files={
+                    "file": ("audio.wav", wav_buffer, "audio/wav"),
+                },
+                data={
+                    "model": "saaras:v3",
+                    "mode": "transcribe",
+                    "language_code": "hi-IN",
+                },
+                timeout=15.0,
+            )
+            response.raise_for_status()
+            res_json = response.json()
+            transcript = res_json.get("transcript", "").strip()
+            logger.info("Sarvam API successfully transcribed: '%s'", transcript)
+            return transcript
+        except Exception as e:
+            logger.error("Failed to transcribe via Sarvam API: %s", e)
+            return ""
+
+    def transcribe_file(self, audio_path: str) -> Tuple[str, str]:
         """
         Transcribe audio from file (for testing).
 
@@ -241,19 +318,20 @@ class SpeechToText:
             audio_path: Path to audio file (wav, mp3, etc.)
 
         Returns:
-            Transcribed text.
+            Tuple of (Transcribed text, detected_language)
         """
         import mlx_whisper
 
         result = mlx_whisper.transcribe(
             audio_path,
             path_or_hf_repo=self.model_path,
-            language="en",
+            language=None,
             fp16=False,
         )
 
+        detected_lang = result.get("language", "en")
         text = result.get("text", "").strip()
-        logger.info("File transcription: '%s'", text)
+        logger.info("File transcription detected language '%s': '%s'", detected_lang, text)
 
         try:
             import mlx.core as mx
@@ -261,8 +339,9 @@ class SpeechToText:
         except Exception:
             pass
 
-        return text
+        return text, detected_lang
 
     @property
     def is_listening(self) -> bool:
         return self._is_listening
+

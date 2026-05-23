@@ -141,3 +141,26 @@ class TestFridayBrain:
             add_generation_prompt=True
         )
 
+    def test_think_full_offline(self):
+        brain = FridayBrain()
+        brain._loaded = True
+        
+        # Mock _generate to simulate a tool call followed by a final response
+        with patch.object(brain, "_generate") as mock_gen, \
+             patch("src.tools.server.MCPToolServer.execute_tool") as mock_execute:
+             
+            # Call 1: returns a tool call XML
+            # Call 2: returns the final answer
+            mock_gen.side_effect = [
+                '<tool_call>{"name": "get_system_info", "arguments": {"info_type": "memory"}}</tool_call>',
+                "System memory has 4.5 GB available. That's plenty, Boss!"
+            ]
+            mock_execute.return_value = {"memory": {"available_gb": 4.5}}
+            
+            response = brain.think_full("How much memory is free?")
+            
+            assert response == "System memory has 4.5 GB available. That's plenty, Boss!"
+            assert brain.get_history_length() == 1
+            assert brain._conversation_history[0] == ("How much memory is free?", "System memory has 4.5 GB available. That's plenty, Boss!")
+
+

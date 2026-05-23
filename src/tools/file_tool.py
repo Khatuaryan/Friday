@@ -7,8 +7,9 @@ Safety: Only ~/Documents, ~/Desktop, ~/Downloads, and project root.
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 from .base import Tool
 
@@ -21,11 +22,27 @@ _PROJECT_ROOT = Path(__file__).parent.parent.parent
 class FileTool(Tool):
     """Read files from the entire macOS filesystem (root directory access)."""
 
+    # Injection pattern list — conservative set of confirmed attack patterns
+    INJECTION_PATTERNS = [
+        r"ignore\s+previous\s+instructions",
+        r"you\s+are\s+now\s+a",
+        r"disregard\s+all\s+prior",
+        r"<\|system\|>",
+        r"<\|user\|>",
+        r"<\|assistant\|>",
+        r"<tool_call>",
+        r"<start_of_turn>",
+        r"\[INST\]",
+        r"### System",
+        r"### Instruction",
+    ]
+
     ALLOWED_DIRS = [
         Path("/"),
     ]
 
     MAX_FILE_SIZE = 100_000  # 100KB max to avoid flooding LLM context
+
 
     @property
     def name(self) -> str:
@@ -77,11 +94,20 @@ class FileTool(Tool):
 
         try:
             content = path.read_text(encoding="utf-8")
-            return {
+            
+            risk_detected, sanitized = self._check_injection_risk(content)
+            
+            result: Dict[str, Any] = {
                 "path": str(path),
-                "content": content,
+                "content": sanitized,
                 "size_bytes": len(content.encode("utf-8")),
             }
+            if risk_detected:
+                result["security_warning"] = (
+                    "File content contained prompt injection patterns. "
+                    "Content wrapped in neutral markers."
+                )
+            return result
         except UnicodeDecodeError:
             return {"error": "File is not text (binary file)"}
         except PermissionError:
@@ -96,3 +122,19 @@ class FileTool(Tool):
             except ValueError:
                 continue
         return False
+
+    def _check_injection_risk(self, content: str) -> Tuple[bool, str]:
+        """
+        Scan for known injection patterns.
+        If found, wrap content in [FILE CONTENT] markers so the brain
+        treats it as raw data, not as instructions.
+        """
+        for pattern in self.INJECTION_PATTERNS:
+            if re.search(pattern, content, re.IGNORECASE):
+                logger.warning(
+                    "Prompt injection pattern matched in file content. "
+                    "Wrapping in neutral markers."
+                )
+                return True, f"[FILE CONTENT START]\n{content}\n[FILE CONTENT END]"
+        return False, content
+

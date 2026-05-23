@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from typing import Any, Dict, List, Optional
 
 from .base import Tool
@@ -26,9 +27,14 @@ class MCPToolServer:
     Manages tool registration, <tool_call> parsing, and execution routing.
     """
 
+    RATE_LIMIT_CALLS = 5
+    RATE_LIMIT_WINDOW = 60.0
+
     def __init__(self) -> None:
         self.tools: Dict[str, Tool] = {}
+        self._call_timestamps: List[float] = []
         self._register_default_tools()
+
 
     def _register_default_tools(self) -> None:
         """Register built-in tools."""
@@ -173,14 +179,37 @@ class MCPToolServer:
 
     def execute_tool(self, tool_call: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Execute a tool call.
+        Execute a tool call with sliding-window rate limiting.
 
         Args:
             tool_call: {"name": "...", "arguments": {...}}
 
         Returns:
-            Tool execution result dict.
+            Tool execution result dict or error.
         """
+        now = time.time()
+
+        # Prune timestamps outside the window
+        self._call_timestamps = [
+            t for t in self._call_timestamps
+            if now - t < self.RATE_LIMIT_WINDOW
+        ]
+
+        if len(self._call_timestamps) >= self.RATE_LIMIT_CALLS:
+            logger.warning(
+                "Tool rate limit exceeded: %d calls in %.0fs window",
+                self.RATE_LIMIT_CALLS,
+                self.RATE_LIMIT_WINDOW,
+            )
+            return {
+                "error": (
+                    "Tool rate limit exceeded. "
+                    "Please wait before making additional tool calls."
+                )
+            }
+
+        self._call_timestamps.append(now)
+
         tool_name = tool_call.get("name")
         arguments = tool_call.get("arguments", {})
 
@@ -191,6 +220,7 @@ class MCPToolServer:
         logger.info("Executing tool: %s with %s", tool_name, arguments)
 
         return tool.safe_execute(**arguments)
+
 
     def get_tool_names(self) -> List[str]:
         """Get list of registered tool names."""

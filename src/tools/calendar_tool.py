@@ -125,12 +125,26 @@ class CalendarTool(Tool):
 
         events = []
         for ek_event in ek_events or []:
+            try:
+                local_dt = datetime.fromtimestamp(
+                    ek_event.startDate().timeIntervalSince1970()
+                )
+                end_dt = datetime.fromtimestamp(
+                    ek_event.endDate().timeIntervalSince1970()
+                )
+                start_str = local_dt.strftime("%Y-%m-%d %H:%M IST")
+                end_str = end_dt.strftime("%Y-%m-%d %H:%M IST")
+            except Exception:
+                start_str = str(ek_event.startDate().description())
+                end_str = str(ek_event.endDate().description())
+
             events.append({
                 "title": str(ek_event.title() or "Untitled"),
-                "start": str(ek_event.startDate().description()),
-                "end": str(ek_event.endDate().description()),
+                "start": start_str,
+                "end": end_str,
                 "location": str(ek_event.location() or ""),
                 "all_day": bool(ek_event.isAllDay()),
+                "description": str(ek_event.notes() or ""),
             })
 
         return events

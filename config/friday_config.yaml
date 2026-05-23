@@ -46,10 +46,18 @@ models:
     memory_gb: 2.2
 
   stt:
-    name: "distil-whisper-small"
-    repo_id: "mlx-community/distil-whisper-small.en"
-    path: "models/distil-whisper-small"
+    name: "whisper-small-multilingual"
+    repo_id: "mlx-community/whisper-small-mlx"
+    path: "models/whisper-small-mlx"
     memory_gb: 0.6
+    supported_languages: ["en", "hi"]
+
+  sarvam:
+    endpoint: "https://api.sarvam.ai/speech-to-text"
+    language_code: "hi-IN"
+    model: "saaras:v3"
+    mode: "transcribe"
+
 
   tts:
     name: "piper-tts"

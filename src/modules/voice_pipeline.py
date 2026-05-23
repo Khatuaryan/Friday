@@ -63,19 +63,26 @@ class VoicePipeline:
         logger.info("Listening for command...")
 
         # 1. Listen and transcribe
-        command_text = self.stt.listen(timeout=timeout)
+        listen_result = self.stt.listen(timeout=timeout)
+
+        if isinstance(listen_result, tuple):
+            command_text, detected_lang = listen_result
+        else:
+            command_text, detected_lang = listen_result, "en"
 
         if not command_text:
             logger.info("No speech detected")
             return None
 
-        logger.info("Command: %s", command_text)
+        logger.info("Command [lang=%s]: %s", detected_lang, command_text)
 
         # 2. Process with brain (if available)
         if self.brain:
             try:
-                # Use context-aware path if available
-                if hasattr(self.brain, "think_with_memory_and_context"):
+                # Use unified thinking path if available
+                if hasattr(self.brain, "think_full"):
+                    response_text = self.brain.think_full(command_text, detected_language=detected_lang)
+                elif hasattr(self.brain, "think_with_memory_and_context"):
                     response_text = self.brain.think_with_memory_and_context(command_text)
                 # Fallback to tool-calling path
                 elif hasattr(self.brain, "think_with_tools"):
@@ -84,12 +91,19 @@ class VoicePipeline:
                     response_text = self.brain.think(command_text)
             except Exception as e:
                 logger.error("Brain error: %s", e)
-                response_text = "I'm having trouble processing that right now."
+                if detected_lang == "hi":
+                    response_text = "अभी कुछ समस्या है।"
+                else:
+                    response_text = "I'm having trouble processing that right now."
         else:
-            response_text = (
-                f"I heard you say: {command_text}. "
-                "Brain not connected."
-            )
+            if detected_lang == "hi":
+                response_text = f"मैंने सुना: {command_text}। मस्तिष्क कनेक्टेड नहीं है।"
+            else:
+                response_text = (
+                    f"I heard you say: {command_text}. "
+                    "Brain not connected."
+                )
+
 
         logger.info("Response: %s", response_text)
 

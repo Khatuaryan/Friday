@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import time
 from pathlib import Path
-from typing import Generator, List, Optional, Tuple
+from typing import Dict, Generator, List, Optional, Tuple
 
 logger = logging.getLogger("friday.brain")
 
@@ -39,7 +39,6 @@ class FridayBrain:
         config_path: str | Path | None = None,
     ) -> None:
         import yaml
-        from pathlib import Path
         
         # Load from friday_config.yaml if possible
         if not config_path:
@@ -201,6 +200,231 @@ class FridayBrain:
             pass
 
         return response_text
+
+    def think_full(
+        self,
+        user_message: str,
+        max_tool_calls: int = 2,
+        detected_language: str = "en",
+    ) -> str:
+        """
+        Unified reasoning cycle:
+        1. Inject dynamic context (datetime, locale, active app)
+        2. Retrieve RAG memories
+        3. Build system prompt
+        4. Run tool-calling loop (max_tool_calls ceiling)
+        5. Return concise final response
+        """
+        if not self._loaded:
+            raise RuntimeError("Model not loaded. Call load_model() first.")
+
+        MAX_INPUT_CHARS = 500
+        if len(user_message) > MAX_INPUT_CHARS:
+            logger.warning(
+                "Input truncated: %d → %d chars", len(user_message), MAX_INPUT_CHARS
+            )
+            user_message = user_message[:MAX_INPUT_CHARS]
+
+
+        import json
+        from datetime import datetime
+        try:
+            from zoneinfo import ZoneInfo
+            ist = ZoneInfo("Asia/Kolkata")
+            now_ist = datetime.now(ist)
+        except Exception:
+            from datetime import timezone, timedelta
+            ist = timezone(timedelta(hours=5, minutes=30))
+            now_ist = datetime.now(ist)
+        
+        datetime_str = now_ist.strftime("%A, %d %B %Y, %I:%M %p IST")
+
+        # 1. Fetch RAG memories (skip if CRITICAL system pressure and not overridden)
+        rag_memories = []
+        if self.memory_store:
+            from src.memory.manager import memory_manager, PressureLevel
+            import os
+            
+            status = memory_manager.get_status()
+            buffer_val = float(os.getenv("FRIDAY_MEM_BUFFER", 1.0))
+            
+            # Skip RAG search only if memory is CRITICAL and no force override
+            if status.pressure_level == PressureLevel.CRITICAL and buffer_val > 0.5:
+                logger.warning("System memory is CRITICAL. Skipping RAG search to conserve memory.")
+            else:
+                try:
+                    rag_memories = self.memory_store.search(user_message, limit=3)
+                except Exception as e:
+                    logger.warning(f"RAG search failed: {e}")
+                    
+            try:
+                self.memory_store.add_conversation_turn("user", user_message)
+            except Exception as e:
+                logger.warning(f"Failed to save user turn to RAG store: {e}")
+
+        # 2. Fetch active application context
+        active_app = None
+        if self.context_tracker:
+            active_app = self.context_tracker.get_current_context()
+
+        # 3. Setup Tool Server & build dynamic system prompt
+        from src.tools.server import MCPToolServer
+        from src.core.prompts import build_full_system_prompt
+        
+        tool_server = MCPToolServer()
+        registered_tools = tool_server.get_tool_names()
+        tools_desc = tool_server.get_tools_description()
+        
+        system_prompt = build_full_system_prompt(
+            datetime_str=datetime_str,
+            active_app=active_app,
+            rag_memories=rag_memories,
+            registered_tools=registered_tools,
+            tools_description=tools_desc,
+            user_language=detected_language,
+        )
+
+
+        # 4. Tool-calling loop
+        session_messages = [{"role": "user", "content": user_message}]
+        final_response = ""
+        tool_calls_made = 0
+
+        while tool_calls_made <= max_tool_calls:
+            raw_response = self._generate(system_prompt, session_messages)
+            tool_call = tool_server.parse_tool_call(raw_response)
+
+            if not tool_call or tool_calls_made == max_tool_calls:
+                # No tool call, or ceiling reached — this is the final response
+                final_response = raw_response
+                # Strip any residual tool_call tags if ceiling was hit mid-loop
+                if "<tool_call>" in final_response:
+                    final_response = "I was unable to retrieve that information right now."
+                break
+
+            # Execute tool and accumulate context
+            tool_result = tool_server.execute_tool(tool_call)
+            logger.info("Tool '%s' result: %s", tool_call.get("name"), str(tool_result)[:200])
+
+            # Accumulate this exchange in session messages
+            session_messages.append({"role": "assistant", "content": raw_response})
+            session_messages.append({
+                "role": "user",
+                "content": (
+                    f"Tool '{tool_call['name']}' returned: {json.dumps(tool_result)}\n\n"
+                    "The tool has executed. You now have all the information you need. "
+                    "DO NOT call any more tools. Provide your final answer in under 50 words, "
+                    "spoken aloud to the user. No lists, no markdown."
+                )
+            })
+            tool_calls_made += 1
+
+        # 5. Post-process response constraints
+        final_response = self._enforce_response_constraints(final_response)
+
+        # 6. Commit single clean turn to history
+        self._add_to_history(user_message, final_response)
+        
+        if self.memory_store:
+            try:
+                self.memory_store.add_conversation_turn("assistant", final_response)
+            except Exception as e:
+                logger.warning(f"Failed to save assistant turn to RAG store: {e}")
+
+        return final_response
+
+    def _generate(
+        self,
+        system_prompt: str,
+        session_messages: List[Dict[str, str]],
+    ) -> str:
+        """
+        Single LLM inference pass.
+        Builds a full chat template from conversation history + active session messages.
+        Does NOT write to conversation history.
+        """
+        import mlx.core as mx
+        from mlx_lm import generate
+        from mlx_lm.sample_utils import make_sampler, make_logits_processors
+
+        mx.default_stream(mx.gpu)
+        mx.clear_cache()
+
+        # Build full message list for chat template
+        chat_messages = []
+        if system_prompt:
+            chat_messages.append({"role": "system", "content": system_prompt})
+            
+        # Add conversation history
+        for user_msg, assistant_msg in self._conversation_history:
+            chat_messages.append({"role": "user", "content": user_msg})
+            chat_messages.append({"role": "assistant", "content": assistant_msg})
+            
+        # Add current session messages
+        chat_messages.extend(session_messages)
+
+        if self._tokenizer is not None:
+            prompt = self._tokenizer.apply_chat_template(
+                chat_messages,
+                tokenize=False,
+                add_generation_prompt=True
+            )
+        else:
+            # Fallback if tokenizer not loaded (e.g. unit tests)
+            prompt = ""
+            if system_prompt:
+                prompt += f"<|system|>\n{system_prompt}<|end|>\n"
+            for msg in chat_messages:
+                if msg["role"] == "system":
+                    continue
+                prompt += f"<|{msg['role']}|>\n{msg['content']}<|end|>\n"
+            prompt += "<|assistant|>\n"
+
+        response = generate(
+            self._model,
+            self._tokenizer,
+            prompt=prompt,
+            max_tokens=self.max_tokens,
+            sampler=make_sampler(self.temperature),
+            logits_processors=make_logits_processors(
+                repetition_penalty=1.1,
+                repetition_context_size=50
+            ),
+            verbose=False,
+        )
+
+        if "<|end|>" in response:
+            response = response.split("<|end|>")[0]
+
+        # Early stop if the model emits other stop tokens
+        for token in ["<|end_of_text|>", "<start_of_turn>", "<end_of_turn>"]:
+            if token in response:
+                response = response.split(token)[0]
+
+        try:
+            mx.clear_cache()
+        except Exception:
+            pass
+
+        return response.strip()
+
+    def _enforce_response_constraints(self, text: str) -> str:
+        """
+        Enforce 50-word / 300-character ceiling for TTS.
+        Find last complete sentence within limit. Hard cut if no sentence found.
+        """
+        if len(text) <= 300:
+            return text
+
+        # Try to find last sentence boundary within 350 chars (grace window)
+        candidate = text[:350]
+        for punct in ['. ', '! ', '? ']:
+            last_idx = candidate.rfind(punct)
+            if last_idx > 100:  # Must be at least 100 chars in
+                return candidate[:last_idx + 1].strip()
+
+        # No clean boundary found — hard cut at 300
+        return text[:300].strip() + "..."
 
     def think_with_memory_and_context(self, user_message: str, max_tool_calls: int = 3) -> str:
         """Thinks using RAG memory, active context, and tool-calling support."""

@@ -43,6 +43,8 @@ pydantic-settings>=2.3.0    # Env-based settings
 # Testing
 pytest>=8.3.0
 pytest-asyncio>=0.23.0
+setuptools<81    # webrtcvad uses pkg_resources, breaks in setuptools>=81
+
 
 # =============================================
 # EXPLICITLY EXCLUDED (too heavy for 8GB):
