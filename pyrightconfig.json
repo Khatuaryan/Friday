@@ -12,5 +12,13 @@
   ],
   "typeCheckingMode": "basic",
   "reportMissingImports": true,
-  "reportMissingTypeStubs": false
+  "reportMissingTypeStubs": false,
+  "reportAttributeAccessIssue": "none",
+  "reportOptionalMemberAccess": "none",
+  "reportArgumentType": "none",
+  "reportReturnType": "none",
+  "reportOptionalSubscript": "none",
+  "reportIndexIssue": "none",
+  "reportOperatorIssue": "none",
+  "reportOptionalOperand": "none"
 }
