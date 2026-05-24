@@ -252,7 +252,7 @@ class SpeechToText:
             pass
 
         # If detected Hindi, route to Sarvam AI API
-        if detected_lang == "hi":
+        if detected_lang in ["hi", "hi-IN"]:
             if self.sarvam_api_key:
                 logger.info("Hindi detected. Routing audio to Sarvam AI API...")
                 sarvam_text = self._transcribe_sarvam(audio_data)

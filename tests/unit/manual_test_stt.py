@@ -38,12 +38,16 @@ def main():
     time.sleep(1)
 
     start = time.perf_counter()
-    text = stt.listen(timeout=5, silence_duration=1.5)
+    listen_result = stt.listen(timeout=5, silence_duration=1.5)
+    if isinstance(listen_result, tuple):
+        text, lang = listen_result
+    else:
+        text, lang = listen_result, "en"
     elapsed = time.perf_counter() - start
 
     print()
     if text:
-        print(f"✅ Transcribed in {elapsed:.2f}s:")
+        print(f"✅ Transcribed in {elapsed:.2f}s [lang={lang}]:")
         print(f"   \"{text}\"")
     else:
         print(f"❌ No speech detected ({elapsed:.2f}s elapsed)")
