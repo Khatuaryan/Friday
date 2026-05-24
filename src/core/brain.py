@@ -126,7 +126,8 @@ class FridayBrain:
         start = time.perf_counter()
 
         from mlx_lm import load
-        self._model, self._tokenizer = load(self.model_path)
+        loaded = load(self.model_path)
+        self._model, self._tokenizer = loaded[0], loaded[1]
 
         load_time = time.perf_counter() - start
         self._loaded = True

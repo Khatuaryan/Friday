@@ -16,6 +16,7 @@
   "reportAttributeAccessIssue": "none",
   "reportOptionalMemberAccess": "none",
   "reportArgumentType": "none",
+  "reportAssignmentType": "none",
   "reportReturnType": "none",
   "reportOptionalSubscript": "none",
   "reportIndexIssue": "none",
