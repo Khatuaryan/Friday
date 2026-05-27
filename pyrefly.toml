@@ -1,0 +1,20 @@
+[project]
+python_version = "3.11"
+python_interpreter = ".venv/bin/python"
+
+site_package_path = [
+  ".venv/lib/python3.11/site-packages",
+]
+
+search_path = [
+  "src",
+  "tests",
+]
+
+[project.ignore]
+paths = [
+  ".venv",
+  "models",
+  "scripts",
+  "__pycache__",
+]

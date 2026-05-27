@@ -87,11 +87,14 @@ class ActivationHandler:
 
         self._voice_pipeline = VoicePipeline(stt=self._stt, tts=self._tts, brain=brain)
         
-        # Inject voice_pipeline and activation_handler into proactive engine
+        # Inject voice_pipeline, activation_handler, and tool_server into proactive engine
         # so it can speak reminders AND check pipeline state before doing so
         if brain and getattr(brain, "proactive_engine", None):
             brain.proactive_engine.voice_pipeline = self._voice_pipeline
             brain.proactive_engine.activation_handler = self
+            from src.tools.server import MCPToolServer
+            self._tool_server = MCPToolServer()
+            brain.proactive_engine._tool_server = self._tool_server
         
         self._running = True
         self._wake_word.start()

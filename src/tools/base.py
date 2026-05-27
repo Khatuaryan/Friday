@@ -17,6 +17,9 @@ logger = logging.getLogger("friday.tools")
 class Tool(ABC):
     """Base class for all FRIDAY tools."""
 
+    requires_confirmation: bool = False
+
+
     @property
     @abstractmethod
     def name(self) -> str:

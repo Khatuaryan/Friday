@@ -89,6 +89,42 @@ class VoicePipeline:
                     response_text = self.brain.think_with_tools(command_text)
                 else:
                     response_text = self.brain.think(command_text)
+
+                # Check for pending confirmation right after thinking cycle
+                if hasattr(self.brain, "pending_confirmation") and self.brain.pending_confirmation:
+                    # 1. Speak the prompt verbally
+                    self.tts.speak(response_text, blocking=True)
+
+                    # 2. Call self.stt.listen(timeout=8) for verbal confirmation
+                    confirm_result = self.stt.listen(timeout=8.0)
+                    if isinstance(confirm_result, tuple):
+                        confirm_text, _ = confirm_result
+                    else:
+                        confirm_text = confirm_result
+
+                    confirm_text = (confirm_text or "").strip().lower()
+
+                    # 3. Check for positive verbal affirmation
+                    is_confirmed = False
+                    for word in ["confirm", "yes", "proceed", "haan", "karo"]:
+                        if word in confirm_text:
+                            is_confirmed = True
+                            break
+
+                    if is_confirmed:
+                        # Execute the pending tool call
+                        result = self.brain.execute_pending_tool()
+                        confirm_msg = result.get("confirmation_message") or result.get("status") or "Action executed successfully."
+                        self.tts.speak(confirm_msg, blocking=True)
+                        response_text = confirm_msg
+                    else:
+                        # 4. Reset pending confirmation and abort
+                        self.brain.pending_confirmation = None
+                        cancel_msg = "Okay, cancelled." if detected_lang != "hi" else "ठीक है, रद्द कर दिया गया।"
+                        self.tts.speak(cancel_msg, blocking=True)
+                        response_text = cancel_msg
+                    return response_text
+
             except Exception as e:
                 logger.error("Brain error: %s", e)
                 if detected_lang == "hi":
@@ -103,7 +139,6 @@ class VoicePipeline:
                     f"I heard you say: {command_text}. "
                     "Brain not connected."
                 )
-
 
         logger.info("Response: %s", response_text)
 

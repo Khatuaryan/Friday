@@ -16,6 +16,16 @@ from .base import Tool
 from .calendar_tool import CalendarTool
 from .file_tool import FileTool
 from .system_tool import SystemTool
+from .app_tool import AppControlTool
+from .media_tool import MediaControlTool
+from .clipboard_tool import ClipboardTool
+from .calendar_write_tool import CalendarWriteTool
+from .reminder_tool import ReminderTool
+from .file_write_tool import FileWriteTool
+from .shell_tool import ShellTool
+from .message_tool import MessageTool
+from .email_tool import EmailTool
+from .web_tool import WebSearchTool, WeatherTool
 
 logger = logging.getLogger("friday.tools.server")
 
@@ -38,7 +48,23 @@ class MCPToolServer:
 
     def _register_default_tools(self) -> None:
         """Register built-in tools."""
-        for tool_class in [CalendarTool, FileTool, SystemTool]:
+        tool_classes = [
+            CalendarTool,
+            FileTool,
+            SystemTool,
+            AppControlTool,
+            MediaControlTool,
+            ClipboardTool,
+            CalendarWriteTool,
+            ReminderTool,
+            FileWriteTool,
+            ShellTool,
+            MessageTool,
+            EmailTool,
+            WebSearchTool,
+            WeatherTool,
+        ]
+        for tool_class in tool_classes:
             tool = tool_class()
             self.register_tool(tool)
 

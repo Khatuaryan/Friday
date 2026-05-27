@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import time
 from pathlib import Path
-from typing import Dict, Generator, List, Optional, Tuple
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 logger = logging.getLogger("friday.brain")
 
@@ -90,6 +90,10 @@ class FridayBrain:
         self.memory_store = None
         self.context_tracker = None
         self.proactive_engine = None
+        
+        # Phase 5C Confirmation payload cache
+        self.pending_confirmation = None
+
 
     @property
     def is_loaded(self) -> bool:
@@ -307,6 +311,13 @@ class FridayBrain:
             tool_result = tool_server.execute_tool(tool_call)
             logger.info("Tool '%s' result: %s", tool_call.get("name"), str(tool_result)[:200])
 
+            # Check if execution requires verbal confirmation (destructive actions)
+            if isinstance(tool_result, dict) and tool_result.get("requires_confirmation"):
+                self.pending_confirmation = tool_result
+                action_desc = tool_result.get("action_description", "perform a restricted action")
+                final_response = f"I'm about to {action_desc}. Please say confirm to proceed, or cancel."
+                break
+
             # Accumulate this exchange in session messages
             session_messages.append({"role": "assistant", "content": raw_response})
             session_messages.append({
@@ -333,6 +344,26 @@ class FridayBrain:
                 logger.warning(f"Failed to save assistant turn to RAG store: {e}")
 
         return final_response
+
+    def execute_pending_tool(self) -> Dict[str, Any]:
+        """
+        Execute the cached pending tool action in self.pending_confirmation.
+
+        Returns:
+            The execution result.
+        """
+        if not self.pending_confirmation:
+            return {"error": "No pending confirmation found"}
+
+        pending_action = self.pending_confirmation.get("pending_action")
+        if not pending_action:
+            self.pending_confirmation = None
+            return {"error": "Invalid pending confirmation format"}
+
+        self.pending_confirmation = None
+        from src.tools.server import MCPToolServer
+        tool_server = MCPToolServer()
+        return tool_server.execute_tool(pending_action)
 
     def _generate(
         self,
