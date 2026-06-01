@@ -9,6 +9,8 @@ COMMAND_DIR="$HOME/.cache/friday/commands"
 FRIDAY_DIR="$HOME/PycharmProjects/Friday"
 VENV_PYTHON="$FRIDAY_DIR/.venv/bin/python"
 
+ICON_SVG="$FRIDAY_DIR/assets/friday-icon.svg"
+
 # ── Read status ──────────────────────────────────────────────
 if [ -f "$STATUS_FILE" ]; then
     STATE=$(python3 -c "import json,sys; d=json.load(open('$STATUS_FILE')); print(d.get('state','unknown'))" 2>/dev/null)
@@ -20,16 +22,21 @@ else
     PRESSURE="normal"
 fi
 
-# ── Status icon ──────────────────────────────────────────────
-case "$STATE" in
-    "idle"|"listening")  ICON="🟢" ;;
-    "verifying")         ICON="🔵" ;;
-    "ready")             ICON="🔵" ;;
-    "processing")        ICON="🟡" ;;
-    "speaking")          ICON="🔊" ;;
-    "offline")           ICON="⚫" ;;
-    *)                   ICON="⚪" ;;
-esac
+# ── Status icon (SVG with fallback to emoji) ─────────────────
+if [ -f "$ICON_SVG" ]; then
+    ICON_B64=$(base64 < "$ICON_SVG" | tr -d '\n')
+    ICON_PART="| templateImage=$ICON_B64"
+else
+    case "$STATE" in
+        "idle"|"listening")  ICON_PART="🟢" ;;
+        "verifying")         ICON_PART="🔵" ;;
+        "ready")             ICON_PART="🔵" ;;
+        "processing")        ICON_PART="🟡" ;;
+        "speaking")          ICON_PART="🔊" ;;
+        "offline")           ICON_PART="⚫" ;;
+        *)                   ICON_PART="⚪" ;;
+    esac
+fi
 
 # Memory pressure color
 case "$PRESSURE" in
@@ -41,10 +48,10 @@ esac
 # ── Menu bar display ─────────────────────────────────────────
 if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE" 2>/dev/null)" 2>/dev/null; then
     # Running: click will toggle listening state
-    echo "$ICON ${RSS}MB | bash='touch $COMMAND_DIR/toggle_listening.cmd' terminal=false refresh=true"
+    echo "${RSS}MB $ICON_PART bash='touch $COMMAND_DIR/toggle_listening.cmd' terminal=false refresh=true"
 else
     # Not running: click will start FRIDAY silently in background
-    echo "$ICON ${RSS}MB | bash='cd $FRIDAY_DIR && source .venv/bin/activate && nohup $VENV_PYTHON -m src.core >/dev/null 2>&1 &' terminal=false refresh=true"
+    echo "${RSS}MB $ICON_PART bash='cd $FRIDAY_DIR && source .venv/bin/activate && nohup $VENV_PYTHON -m src.core >/dev/null 2>&1 &' terminal=false refresh=true"
 fi
 echo "---"
 

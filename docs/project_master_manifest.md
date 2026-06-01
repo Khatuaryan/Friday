@@ -145,9 +145,11 @@ flowchart TB
 ### 🟤 Phase Set 6: System Integration & Infrastructure
 *   **What was developed:**
     *   `src/utils/`: Unified project constants, rotating 10MB file logging, and Pydantic v2 `FridayConfig` configuration layer.
+    *   `src/utils/overlay.py`: Designed and implemented the transparent Siri-like floating neon orb visualizer overlay in a dedicated Tkinter background graphics thread, pulsing concentric circles based on real-time ASR, CPU processing, and streamed TTS audio amplitude updates.
     *   `src/core/__main__.py`: Built a proper CLI onboarding entry point with `--dry-run`, `--no-face`, and `--no-brain` configurations.
     *   `src/core/ipc_bridge.py`: Real-time state syncing with SwiftBar via local file polling (`status.json` and `.cmd` commands).
     *   `install_launchagent.sh`: Built launchctl daemons to load F.R.I.D.A.Y. automatically at user login.
+
 
 ---
 

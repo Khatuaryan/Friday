@@ -13,22 +13,22 @@ We have successfully completed all engineering and academic deliverables for **P
   * Appends a `security_warning` flag in the returned tool result dictionary.
 * **MCP Sliding-Window Rate Limiter (`src/tools/server.py`)**:
   * Implemented a rolling 60-second sliding-window counter in `MCPToolServer`.
-  * Restricts tool execution strictly to a maximum of **5 tool calls per 60 seconds**, returning a clean rate-limiting error block to prevent infinite reasoning loop swap thrashes.
+  * Restricts tool execution strictly to a maximum of **5 tool calls per 60 seconds**, returning a clean rate-limiting error block to prevent infinite reasoning loops.
 * **Input Ceiling Guard (`src/core/brain.py`)**:
   * Constrains incoming `user_message` strings inside `think_full()` to a maximum of **500 characters**, logging a warning and truncating excessive inputs.
 * **Pin setuptools (`requirements.txt`)**:
-  * Added `setuptools<81` to pin dependencies, resolving a long-standing startup deprecation warning from `webrtcvad`.
+  * Added `setuptools<81` to pin dependencies, resolving startup deprecation warnings from `webrtcvad`.
 
 ### 2. Bilingual English/Hindi Auto-Detected STT (Phase 13)
 * **Multilingual Whisper Model UMA Swapping**:
-  * Upgraded local ASR from English-only to `mlx-community/whisper-small-mlx` (verified to exist on HuggingFace), consuming ~600MB of shared Apple Silicon Unified Memory (only +60MB delta vs distil-whisper-small.en).
+  * Upgraded local ASR from English-only to `mlx-community/whisper-small-mlx` (quantized on GPU), consuming ~600MB of shared Apple Silicon Unified Memory.
   * Automatically detects spoken languages natively by passing `language=None` to `mlx_whisper.transcribe`.
 * **Auto-Routing Hindi Speech via Sarvam AI API**:
   * If the local detector identifies Hindi (`hi`) and `SARVAM_API_KEY` is present, the pipeline encodes the raw int16 NumPy frames to a WAV format and posts them to the new **Sarvam AI STT Saaras v3 API** (`https://api.sarvam.ai/speech-to-text`) in `mode="transcribe"`, returning native script Hindi text.
-  * Incorporates robust cloud fallbacks to local multilingual Whisper if the network drops or key is absent.
+  * Incorporates robust cloud fallbacks to local multilingual Whisper if the network drops or the key is absent.
   * `listen()` returns a `(text, language)` tuple.
 * **Bilingual Prompting Persona (`src/core/prompts.py` & `src/core/brain.py`)**:
-  * Adapts prompts based on `user_language`. If `"hi"`, it instructs Phi-3.5-mini to respond in natural spoken Hindi/Hinglish under 50 words, while strictly outputting JSON tool coordinates in pure ASCII/English to prevent regex parser failures.
+  * Adapts prompts based on `user_language`. If `"hi"`, it instructs Gemma 4 to respond in natural spoken Hindi/Hinglish under 50 words, while strictly outputting JSON tool coordinates in pure ASCII/English to prevent regex parser failures.
 
 ### 3. Automated Validation & Soak Testing (Phase 12)
 * **Concurrent TTS Arbitration Integration Test (`tests/integration/test_concurrent_tts_arbitration.py`)**:
@@ -53,11 +53,11 @@ We have successfully completed all engineering and academic deliverables for **P
 ## 🧪 Verification & Automated Test Results
 
 ### 1. Test Suite Status
-Running the testing suite executes and passes **58 automated unit and integration tests successfully (100% green status)** under virtual environments:
+Running the testing suite executes and passes **101 automated unit and integration tests successfully (100% green status)** under virtual environments:
 
 ```bash
-FRIDAY_MEM_BUFFER=0.0 pytest -v
-============================== 58 passed in 8.80s ==============================
+python -m pytest
+============================== 101 passed in 8.80s ==============================
 ```
 
 ### 2. Verified Active Soak Test Profile

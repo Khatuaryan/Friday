@@ -14,10 +14,12 @@ The objective of Phase 1 was to build a robust, privacy-first activation loop th
 ### 2. Identity Verification: Apple Vision Framework
 - **Selection**: We intentionally avoided heavy libraries like `OpenCV` or `Mediapipe` for face recognition. Instead, we used the native **Apple Vision Framework** via `PyObjC`.
 - **Why**: This provides hardware-accelerated processing with **near-zero additional RAM overhead**, as it leverages the macOS system-level frameworks already resident in memory.
+- **Production Integration**: The FaceTime HD camera is explicitly prioritized over Continuity Camera devices via `AVCaptureDevice` enumeration. Verified face encodings are stored in `data/faces/` and loaded at startup for zero-overhead biometric confirmation.
 
 ### 3. Orchestration: State Machine
 - **Selection**: Implemented a state-based `ActivationHandler`.
 - **Logic**: `LISTENING` → `VERIFYING` → `READY`. This ensures the camera is only active for ~2 seconds after the wake word is detected, maximizing privacy and battery life.
+- **Overlay Integration**: In the production system, each state transition triggers the **Celestial Loom visualizer** (`src/utils/overlay.py`), a transparent Tkinter neon orb rendered at the top-right of the screen. State-specific color profiles provide at-a-glance awareness: cyan (ready/listening), blue (verifying), purple (processing), and pink (speaking). The overlay uses sinusoidal pulsing, optical braiding, and screen emissivity effects for a premium Siri-like visual presence.
 
 ---
 
@@ -41,6 +43,7 @@ The objective of Phase 1 was to build a robust, privacy-first activation loop th
 - **Memory Footprint**: < 200MB RSS (Idle).
 - **Latency**: ~1.2s from Wake Word detection to Face Verification completion.
 - **Accuracy**: >98% true-positive rate for the "Hey Mycroft" placeholder.
+- **Production Latency**: In the full production pipeline (Phase Set 6), the activation-to-first-word voice response achieves **sub-second latency** thanks to sentence-by-sentence streaming TTS (`blocking=False`) and Gemma 4 cloud offloading.
 
 ---
 
@@ -49,3 +52,4 @@ To ensure the project didn't become a "spaghetti" codebase as we added LLM featu
 - `src/modules/audio/`: Encapsulated hardware-specific audio logic.
 - `src/modules/vision/`: Encapsulated native Apple Vision wrappers.
 - `src/core/`: Centralized orchestration and state management.
+- `src/utils/`: Shared infrastructure including the `overlay.py` Celestial Loom visualizer, `constants.py` centralized magic numbers, `logger.py` rotating file handler, and `config.py` Pydantic v2 configuration validation.

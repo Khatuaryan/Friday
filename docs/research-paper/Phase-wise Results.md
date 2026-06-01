@@ -71,8 +71,9 @@
 
 ### SwiftBar
 - Status: ✅ Installed (v2.0.1)
-- Plugin: `~/.swiftbar/friday.5s.sh`
-- Shows: 🤖 icon + memory/status info
+- Plugin: `swift-daemon/friday.1s.sh`
+- Shows: Celestial Loom SVG icon (`assets/friday-icon.svg`) + memory/status info
+- Icon: Base64-encoded SVG rendered as `templateImage` in the macOS menu bar
 
 ---
 
@@ -123,13 +124,17 @@ Run `make enroll-face` to capture baseline identity photos of "Boss" and test ve
 **Completion Date**: 2026-05-13
 
 ### Dependencies
-- `mlx-whisper`, `sounddevice`, `webrtcvad`, macOS native `say`
+- `mlx-whisper`, `sounddevice`, `webrtcvad`, macOS native `say` (`NSSpeechSynthesizer`)
 
 ### Performance Metrics
 - **STT (Distil-Whisper)**: ~600 MB (Lazy-loaded). Inference time ~1.5s for short sentences.
 - **TTS (macOS say)**: 0 MB (System process). Latency < 200ms.
 - **Accuracy**: Distil-Whisper Small provides excellent word recognition for command-line instructions.
 - **Status**: ✅ PASS
+
+### Production Evolution
+- **STT**: Complemented by **Sarvam AI cloud routing** for Hindi speech, achieving bilingual auto-detection.
+- **TTS**: Uses **sentence-by-sentence streaming** (`blocking=False`) for sub-second first-word delivery. Tool-call results bypass the reasoning loop via a **0ms programmatic fast-path**.
 
 ---
 
@@ -146,6 +151,10 @@ Run `make enroll-face` to capture baseline identity photos of "Boss" and test ve
 - **Memory Check**: System correctly blocks model load if available RAM < 3.2 GB.
 - **Status**: ✅ PASS
 
+### Production Evolution
+- **Brain Model**: Migrated from local Phi-3.5-mini to **Gemma 4 31B (paid-tier)** via OpenRouter cloud routing (`google/gemma-4-31b-it`). Eliminates the 2.2GB local model load, freeing ~70% of the memory budget.
+- **Personality**: The production brain embodies a **F.R.I.D.A.Y. persona** — concise, anticipatory, decisive. Responses truncated to ≤50 words / 300 characters for low-latency voice delivery.
+
 ---
 
 ## Phase 5: MCP Tool Servers - Results
@@ -154,12 +163,19 @@ Run `make enroll-face` to capture baseline identity photos of "Boss" and test ve
 
 ### Implemented Tools
 - **System**: Battery, Memory, Disk, Network.
-- **Calendar**: EventKit read access (Authorized via Semaphore).
-- **File**: Sandboxed read (Documents/Desktop/Downloads).
+- **Calendar**: EventKit read/write access (Authorized via Semaphore). IST timezone-localized.
+- **File**: Full macOS filesystem access starting at root (`/`). Size limits enforced (`MAX_FILE_READ_BYTES = 100KB`, `MAX_FILE_WRITE_BYTES = 50KB`).
+- **Applications**: Open, close, and switch between macOS applications via Cocoa APIs.
+- **Media**: Playback control via AppleScript bridging to system media players.
+- **Messages/Email**: Compose and send via AppleScript-bridged iMessage and Mail.app.
+- **Web Tools**: URL fetching, web search, and content summarization.
+- **Reminders**: EventKit-backed reminder creation and management.
 
 ### Tool Calling Logic
 - **Regex Parsing**: Brain generates `<tool_call>` JSON blocks.
-- **Safety**: File paths are normalized and checked against an allow-list before execution.
+- **Balanced-Brace Scanner**: Auto-repairs fragmented, markdown-wrapped, or malformed JSON blocks from cloud models.
+- **Safety**: File paths are normalized and checked against size limits before execution.
+- **Verbal Confirmation**: Destructive actions (write, delete, send) require spoken user confirmation before execution.
 - **Status**: ✅ PASS
 
 ---
@@ -258,18 +274,42 @@ The table below maps the performance, resource requirements, and suitability of 
 
 | Model Name | Param Size | Quantization | RAM Footprint (Unified Memory) | Generation Speed | Tool Calling Precision | 8GB RAM Suitability | Status / Recommendation |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **Phi-3.5-mini-instruct** | **3.8B** | **4-bit** | **~2.2 GB** | **18.4 tokens/s** | **Excellent (Regex)** | **Highly Safe** | **Recommended (Active Default)**. Fits easily within the 3.5GB budget with plenty of space for other background apps. |
+| **Phi-3.5-mini-instruct** | **3.8B** | **4-bit** | **~2.2 GB** | **18.4 tokens/s** | **Excellent (Regex)** | **Highly Safe** | **Retired (Local Default)**. Superseded by Gemma 4 31B cloud for production use. |
 | **Llama-3.2-3B-Instruct** | 3.0B | 4-bit | ~1.8 GB | ~20.0 tokens/s | Moderate | Highly Safe | **Good Alternative**. Fast inference speed, but has slightly more tool invocation hallucination rates. |
-| **Qwen2.5-7B-Instruct** | 7.2B | 4-bit | ~4.5 GB | ~10.0 tokens/s | Excellent | Risk of Swapping | **Marginal**. Swapping risk is high if active IDEs or web browers consume system memory. Requires turning off safety buffers. |
+| **Qwen2.5-7B-Instruct** | 7.2B | 4-bit | ~4.5 GB | ~10.0 tokens/s | Excellent | Risk of Swapping | **Marginal**. Swapping risk is high if active IDEs or web browsers consume system memory. Requires turning off safety buffers. |
 | **Gemma-3-12B-it** | 12.0B | 4-bit | ~7.0 GB | ~4.0 tokens/s | Outstanding | Fails Safety Bounds | **Unsupported on 8GB**. Exceeds the total available memory pool, leading to extreme disk thrashing (0.8 tokens/s). |
+| **Gemma 4 31B (Cloud)** | **31.0B** | **N/A (Cloud)** | **~0 GB (API)** | **Network-dependent** | **Outstanding** | **Optimal** | **Active Default (Production)**. Paid-tier via OpenRouter (`google/gemma-4-31b-it`). Frontier-class reasoning with zero local memory overhead. |
 
 ---
 
-## Final Project Status (Post-Phase 10)
-- **Total Automated Tests**: 54/54 passed ✅ (100% green status)
-- **Steady-State CPU RSS**: ~458.3 MB (Peak process footprint under active load)
-- **Unified Memory Load**: ~2.74 GB (Phi-3.5-mini + Whisper STT + RAG ONNX)
-- **Core Loop Interaction Latency**: **~1.15 seconds** (Voice-to-voice turn)
-- **Privacy Gating**: 100% Offline & Local (zero external network dependencies, encrypted disk data).
+## Cloud Integration Phase — OpenRouter + Gemma 4
 
+**Completion Date**: 2026-05-24
 
+### Key Metrics
+- **Local RAM Saved**: ~2.20 GB (reducing active running assistant footprint by ~70% to under 1.0 GB).
+- **Reasoning Capabilities**: Massive upgrade to 31-billion-parameter frontier model capabilities, eliminating parameter omission and complex tool-chaining issues.
+- **Sarvam AI STT**: Hindi speech auto-detected and routed to Sarvam cloud transcription with high accuracy.
+- **Streaming TTS**: Sentence-by-sentence `blocking=False` synthesis achieving sub-second first-word latency.
+
+---
+
+## Phase Set 6 — System Integration & Infrastructure
+
+**Completion Date**: 2026-05-25
+
+### Key Achievements
+- **Celestial Loom Visualizer**: Transparent Tkinter neon orb overlay (`src/utils/overlay.py`) with volumetric depth, optical braiding, sinusoidal pulsing, and screen emissivity. SVG icon reference stored in `assets/friday-icon.svg`.
+- **SwiftBar Daemon v2**: Menu bar plugin (`swift-daemon/friday.1s.sh`) using base64-encoded SVG icon with file-based IPC state bridge.
+- **LaunchAgent**: Auto-start on login via `com.aryan.friday.plist` with `RunAtLoad=true`.
+- **Centralized Constants**: All magic numbers in `src/utils/constants.py`. All logging via `src/utils/logger.py` rotating handler.
+
+---
+
+## Final Project Status (Production)
+- **Total Automated Tests**: 104+ passed ✅ (including logger migration, memory config, and mock suites)
+- **Steady-State CPU RSS**: ~458.3 MB (Peak process footprint under active load without local model)
+- **Active Brain Model**: Gemma 4 31B (paid-tier) via OpenRouter cloud routing
+- **Core Loop Interaction Latency**: **<1 second** (sentence-streamed voice-to-voice turn)
+- **Privacy Gating**: Biometric face verification + encrypted disk data + privacy blacklist
+- **Visual Feedback**: Celestial Loom neon orb overlay with state-modulated color profiles

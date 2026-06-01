@@ -161,6 +161,9 @@ We will run custom test suites using `pytest` and direct execution scripts to ve
    ```bash
    python tests/unit/test_context_tracker.py
    ```
+4. **Test Memory Isolation Overrides**:
+   * Verify that tests involving active embedding models or heavy local DB operations programmatically set `os.environ["FRIDAY_MEM_BUFFER"] = "-1.0"` during setup and restore it dynamically in a `finally` block to ensure test suite robustness under host RAM constraints.
+
 
 ### Manual Verification
 1. **RAG Context check:**

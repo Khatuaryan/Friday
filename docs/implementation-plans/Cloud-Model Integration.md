@@ -1,8 +1,9 @@
-# Implementation Plan — OpenRouter Integration with Gemma 4 31B (Free)
+# Implementation Plan — OpenRouter Integration with Paid Gemma 4 31B
 
-This plan integrates the **OpenRouter API** into F.R.I.D.A.Y.'s brain module, routing the core LLM reasoning and tool-calling loop to Google's high-capacity **Gemma 4 31B (Free)** model (`google/gemma-4-31b-it:free`). By transitioning the LLM inference from a local MLX process to the cloud, we:
+This plan integrates the **OpenRouter API** into F.R.I.D.A.Y.'s brain module, routing the core LLM reasoning and tool-calling loop to Google's high-capacity **Paid Gemma 4 31B** model (`google/gemma-4-31b-it`). By transitioning the LLM inference from a local MLX process to the cloud, we:
 1. **Reduce local RAM consumption by 2.2 GB**, bringing active assistant overhead down from 3.5 GB to under 1.0 GB (extremely safe for 8GB Macs).
 2. **Exponentially increase intelligence & reasoning depth**, resolving any tool-chaining and parameter omission issues observed with the 3.8B model.
+3. **Ensure Rock-Solid Reliability**, escaping the congested public free-tier endpoints to avoid `429 Too Many Requests` API failures under high-concurrency loops.
 
 ---
 
@@ -24,11 +25,11 @@ This plan integrates the **OpenRouter API** into F.R.I.D.A.Y.'s brain module, ro
 ### Component 1: Config Schema (Pydantic & YAML)
 
 #### [MODIFY] [config.py](file:///Users/khatuaryan/PycharmProjects/Friday/src/utils/config.py)
-* Add `OpenRouterConfig` Pydantic model with properties for `api_key` and `model` (defaulting to `"google/gemma-4-31b-it:free"`).
+* Add `OpenRouterConfig` Pydantic model with properties for `api_key` and `model` (defaulting to `"google/gemma-4-31b-it"`).
 * Update `FridayConfig` to include an optional `openrouter` configuration block.
 
 #### [MODIFY] [friday_config.yaml](file:///Users/khatuaryan/PycharmProjects/Friday/config/friday_config.yaml)
-* Add `openrouter` section with the API key and model properties.
+* Add `openrouter` section with the API key and model properties set to the paid model.
 
 ---
 

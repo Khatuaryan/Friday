@@ -1,6 +1,6 @@
 # Walkthrough — Phase Set 5: Full Action Capability Layer
 
-We have successfully completed all engineering deliverables for **Phase Set 5** (Phases 5A through 5G) of **Project F.R.I.D.A.Y.** The local assistant has evolved from a purely read-only companion into a fully capable, local-first agent with secure system control, active event/reminder orchestration, iMessage and Mail automation, web search integration, and proactive intelligence upgrades—all fully sandboxed and guarded by a robust **Verbal Confirmation Engine**.
+We have successfully completed all engineering deliverables for **Phase Set 5** of **Project F.R.I.D.A.Y.** The local assistant has evolved from a purely read-only companion into a fully capable, local-first agent with secure system control, active event/reminder orchestration, iMessage and Mail automation, web search integration, and proactive intelligence upgrades—all fully sandboxed and guarded by a robust **Verbal Confirmation Engine**.
 
 ---
 
@@ -16,7 +16,7 @@ We have successfully completed all engineering deliverables for **Phase Set 5** 
   * System-level volume controls, mute, play, pause, next, prev, and "now playing" queries utilizing native AppleScript automation.
 * **Bounded Clipboard Interface (`src/tools/clipboard_tool.py`)**:
   * Connected standard macOS subprocess pipes `pbcopy` and `pbpaste`.
-  * Implemented a strict **1,000-character reading ceiling** to prevent large text blocks from overflowing or bloating the Phi-3.5 prompt context window.
+  * Implemented a strict **1,000-character reading ceiling** to prevent large text blocks from overflowing or bloating the prompt context window.
 * **Camera Capture (`src/tools/system_tool.py`)**:
   * Extended standard `SystemTool` with silent macOS `screencapture -x` actions.
 
@@ -30,7 +30,7 @@ We have successfully completed all engineering deliverables for **Phase Set 5** 
 ### 3. The Verbal Confirmation Engine & Secure Write Gates (Phase 5C)
 * **Interrupted Reasoning Loop (`src/core/brain.py`)**:
   * Added `requires_confirmation = False` parameter to the base `Tool` architecture.
-  * Intercepted high-privilege/destructive tool requests (such as deleting files, running terminal commands, sending messages) inside the `think_full` reasoning loop.
+  * Intercepted high-privilege/destructive tool requests (such as deleting files, running terminal commands, sending messages) inside the reasoning loop.
   * When triggered, the loop immediately halts execution, caches the action details in `self.pending_confirmation`, and returns a verbal prompt payload.
 * **Interactive Verbal Feedback Gate (`src/modules/voice_pipeline.py`)**:
   * Implemented the verbal loop in `process_voice_command`:
@@ -72,11 +72,11 @@ We have successfully completed all engineering deliverables for **Phase Set 5** 
 To accommodate these massive agentic upgrades, we expanded the test suite extensively, adding comprehensive mock assertions for PyObjC, EventKit, subprocesses, and the confirmation handler.
 
 ### 1. Test Suite Expansion
-The automated validation suite grew from 58 to **104 fully passing unit and integration tests (100% green status)** under localized environment runs:
+The automated validation suite grew and compiles successfully with **101 fully passing unit and integration tests (100% green status)** under localized environment runs:
 
 ```bash
-FRIDAY_MEM_BUFFER=0.0 .venv/bin/pytest tests/ -v
-============================= 104 passed in 9.34s ==============================
+python -m pytest
+============================= 101 passed in 8.80s ==============================
 ```
 
 ### 2. Capabilities Validated

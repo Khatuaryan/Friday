@@ -160,3 +160,8 @@ To guarantee absolute confidentiality, no user data or conversation history may 
     *   *Rule:* Always call `dotenv.load_dotenv()` at the absolute entry points of execution (`src/core/__main__.py`, `src/utils/config.py`, and `src/modules/audio/stt.py`) to ensure API keys like `SARVAM_API_KEY` and `OPENROUTER_API_KEY` are seamlessly loaded into memory without manual shell exports.
 *   **Memory Pressure Test Isolation:**
     *   *Rule:* Do not set `FRIDAY_MEM_BUFFER` globally for all tests as it breaks memory manager strict validation checks. Instead, programmatically set `os.environ["FRIDAY_MEM_BUFFER"] = "-1.0"` inside specific tests that load heavy models (e.g. embeddings, RAG database tests) and restore the original environment state in a `finally` block.
+*   **Transparent Neon Orb Visualizer HUD:**
+    *   *Rule:* The transparent Siri-like floating Tkinter visualizer must run completely within a background graphics thread to prevent blocking main process loop lockups on macOS, and synchronize its concentric pulsing rings dynamically with `ActivationHandler` voice states.
+*   **Sub-Second Streaming Voice Synthesis:**
+    *   *Rule:* Ensure TTS responses are streamed sentence-by-sentence as tokens generate (`blocking=False` in `speak()`), using the direct programmatic synthesis pass (0ms load/inference) for tool execution summaries to achieve under 1-second voice reply times.
+

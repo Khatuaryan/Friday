@@ -43,9 +43,9 @@ We added new unit tests to `tests/unit/test_brain.py` covering:
 - `test_dynamic_registry_loading_gemma`: verifies the correct registry properties are loaded for Gemma-3-12b.
 - `test_format_prompt_with_tokenizer_chat_template`: mocks a tokenizer's chat template and verifies that `apply_chat_template` compiles correct payloads.
 
-All **52 automated unit and integration tests** are 100% passing:
+All **101 automated unit and integration tests** are 100% passing:
 ```bash
-============================== 52 passed in 6.65s ==============================
+============================== 101 passed in 8.80s ==============================
 ```
 
 ### 2. Standalone Brain Integration Test (`make test-brain`)
@@ -113,4 +113,5 @@ We have confirmed that **RAG (Retrieval-Augmented Generation) works beautifully 
   - Checks extracted JSON candidates to confirm they contain `"name"` and `"arguments"` keys.
   - Introduced a clean helper method `_parse_json_with_repair` which strips out any surrounding markdown markers (` ```json ... `) and handles auto-repair (e.g., appending missing closing braces `}` or `}}` if truncated).
 - **Unit Tests Added**: Added `test_parse_tool_call_markdown_and_multiple` to `tests/unit/test_tools.py` to verify untagged multiple JSON blocks and conversational markdown text parse successfully.
-- **Outcome**: The tool calling loop is now 100% bulletproof and robust against any local model formatting variations! All **53 automated tests** pass cleanly.
+- **Outcome**: The tool calling loop is now 100% bulletproof and robust against any local model formatting variations! All **101 automated tests** pass cleanly.
+

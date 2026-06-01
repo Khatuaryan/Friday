@@ -1,23 +1,60 @@
 """
-F.R.I.D.A.Y. Siri-like Glowing Overlay.
+F.R.I.D.A.Y. Celestial Loom — Neon Orb Overlay.
 
-Provides a borderless, transparent, floating glowing circular visualizer
-in the top-right of the screen during active voice interactions.
+A borderless, transparent, floating visualizer rendered in the top-right of
+the macOS screen.  Implements four layers of premium visual behavior:
+
+1. **Volumetric Depth & Layered Luminance**
+   Matte outer ring → smoked-glass corona → radiant neon core.
+2. **High-Frequency Optical Braiding**
+   Rotating wave-thread arcs inspired by the SVG Celestial Loom design.
+3. **Dynamic State Modulation (The Pulsing Logic)**
+   Sinusoidal breath-cycle at ~0.8 Hz with state-specific color profiles.
+4. **Screen Emissivity Effect**
+   A wide, ultra-soft outer halo that bleeds light into surrounding desktop.
 """
 
 from __future__ import annotations
 
+import math
 import threading
 import time
 import tkinter as tk
+from pathlib import Path
 from src.utils.logger import get_logger
 
 logger = get_logger("friday.overlay")
 
+# ── Icon asset path (SVG reference for documentation) ────────
+ICON_SVG = Path(__file__).resolve().parent.parent.parent / "assets" / "friday-icon.svg"
+
+# ── State color profiles ─────────────────────────────────────
+# Each state maps to:  (core_color, corona_color, halo_color, dark_base)
+STATE_COLORS: dict[str, tuple[str, str, str, str]] = {
+    "verifying":  ("#0066FF", "#002299", "#001155", "#000022"),
+    "ready":      ("#00F2FF", "#006688", "#003344", "#001122"),
+    "listening":  ("#00F2FF", "#006688", "#003344", "#001122"),
+    "processing": ("#BF00FF", "#550077", "#330044", "#110022"),
+    "speaking":   ("#FF007F", "#880033", "#440022", "#220011"),
+}
+DEFAULT_PROFILE = STATE_COLORS["ready"]
+
+# ── Animation constants ──────────────────────────────────────
+WINDOW_SIZE  = 160           # px — window dimensions
+CENTER       = WINDOW_SIZE // 2
+BASE_RADIUS  = 28            # Core orb radius
+CORONA_RINGS = 10            # Number of translucent corona layers
+HALO_RINGS   = 6             # Number of outer emissivity rings
+WAVE_THREADS = 6             # Number of braided arc threads
+PULSE_HZ     = 0.8           # Breath-cycle frequency
+FRAME_MS     = 25            # ~40 FPS
+ROTATION_SPEED = 0.012       # Radians per frame for wave braiding
+
+
 class FridayOverlay:
     """
-    Manages a transparent, borderless, floating glowing Siri-like orb
-    at the top-right of the screen.
+    Manages the transparent, borderless, floating Celestial Loom orb
+    at the top-right of the macOS screen.
     """
 
     def __init__(self) -> None:
@@ -26,17 +63,20 @@ class FridayOverlay:
         self._thread: threading.Thread | None = None
         self._running = False
         self._visible = False
-        self._pulse_dir = 1
-        self._pulse_val = 0.5
-        self._orb_color = "#00f0ff" # Neon Cyan/Blue default
-        self._glow_objects: list[int] = []
+        self._state = "ready"
+        self._phase = 0.0          # Sinusoidal breath phase (radians)
+        self._rotation = 0.0       # Wave braid rotation angle (radians)
+
+    # ── Public API ───────────────────────────────────────────
 
     def start(self) -> None:
-        """Starts the overlay thread (window stays hidden initially)."""
+        """Starts the overlay graphics thread (window stays hidden initially)."""
         if self._running:
             return
         self._running = True
-        self._thread = threading.Thread(target=self._run_window, daemon=True, name="friday-overlay")
+        self._thread = threading.Thread(
+            target=self._run_window, daemon=True, name="friday-overlay"
+        )
         self._thread.start()
         logger.info("Overlay engine initialized.")
 
@@ -50,20 +90,9 @@ class FridayOverlay:
             except Exception:
                 pass
 
-    def show(self, state: str = "verifying") -> None:
-        """Shows the glowing orb with state-specific colors."""
-        # Set state color
-        if state == "verifying":
-            self._orb_color = "#0066ff" # Deep blue
-        elif state == "ready":
-            self._orb_color = "#00f0ff" # Vibrant cyan
-        elif state == "processing":
-            self._orb_color = "#bf00ff" # Neon purple
-        elif state == "speaking":
-            self._orb_color = "#ff007f" # Neon pink/rose
-        else:
-            self._orb_color = "#00f0ff"
-
+    def show(self, state: str = "ready") -> None:
+        """Shows the glowing orb with state-specific color profile."""
+        self._state = state
         self._visible = True
         if self._root:
             self._root.after(0, self._set_visibility, True)
@@ -73,6 +102,8 @@ class FridayOverlay:
         self._visible = False
         if self._root:
             self._root.after(0, self._set_visibility, False)
+
+    # ── Internal: window lifecycle ───────────────────────────
 
     def _set_visibility(self, visible: bool) -> None:
         if not self._root:
@@ -87,25 +118,22 @@ class FridayOverlay:
     def _run_window(self) -> None:
         try:
             self._root = tk.Tk()
-            self._root.overrideredirect(True) # Borderless
-            self._root.attributes("-topmost", True) # Always on top
-            self._root.config(bg="systemTransparent") # macOS transparent
-            
-            # Position at top-right of screen
-            screen_width = self._root.winfo_screenwidth()
-            window_width = 120
-            window_height = 120
-            x = screen_width - window_width - 20
-            y = 40 # Right below menu bar
-            self._root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+            self._root.overrideredirect(True)
+            self._root.attributes("-topmost", True)
+            self._root.config(bg="systemTransparent")
 
-            # Create canvas
+            # Position: top-right of screen, below menu bar
+            screen_w = self._root.winfo_screenwidth()
+            x = screen_w - WINDOW_SIZE - 16
+            y = 36
+            self._root.geometry(f"{WINDOW_SIZE}x{WINDOW_SIZE}+{x}+{y}")
+
             self._canvas = tk.Canvas(
                 self._root,
-                width=window_width,
-                height=window_height,
+                width=WINDOW_SIZE,
+                height=WINDOW_SIZE,
                 bg="systemTransparent",
-                highlightthickness=0
+                highlightthickness=0,
             )
             self._canvas.pack()
 
@@ -115,71 +143,155 @@ class FridayOverlay:
             # Hide initially
             self._root.withdraw()
 
-            # Run loop
             self._root.mainloop()
         except Exception as e:
             logger.error(f"Overlay window crashed: {e}")
+
+    # ── Internal: animation engine ───────────────────────────
 
     def _animate(self) -> None:
         if not self._root or not self._canvas or not self._running:
             return
 
-        # Simple pulse calculation
-        self._pulse_val += 0.05 * self._pulse_dir
-        if self._pulse_val >= 1.0:
-            self._pulse_val = 1.0
-            self._pulse_dir = -1
-        elif self._pulse_val <= 0.4:
-            self._pulse_val = 0.4
-            self._pulse_dir = 1
+        # Advance sinusoidal breath phase
+        self._phase += (2 * math.pi * PULSE_HZ * FRAME_MS) / 1000.0
+        if self._phase > 2 * math.pi:
+            self._phase -= 2 * math.pi
+
+        # Advance wave rotation
+        self._rotation += ROTATION_SPEED
 
         if self._visible:
             self._canvas.delete("all")
-            
-            # Draw glowing Siri-like gradient orb
-            center_x = 60
-            center_y = 60
-            base_radius = 28
-            
-            # Layer translucent concentric circles for neon glow effect
-            layers = 8
-            for i in range(layers, 0, -1):
-                # Calculate alpha glow size
-                radius = base_radius + (i * 3.5) * self._pulse_val
-                # Translucency color mappings (Siri blue/purple blend)
-                if self._orb_color == "#00f0ff": # Cyan
-                    color = self._blend_colors("#000022", "#00f0ff", (layers - i) / layers)
-                elif self._orb_color == "#0066ff": # Deep blue
-                    color = self._blend_colors("#000022", "#0066ff", (layers - i) / layers)
-                elif self._orb_color == "#bf00ff": # Purple
-                    color = self._blend_colors("#110022", "#bf00ff", (layers - i) / layers)
-                else: # Rose
-                    color = self._blend_colors("#220011", "#ff007f", (layers - i) / layers)
-                
-                self._canvas.create_oval(
-                    center_x - radius, center_y - radius,
-                    center_x + radius, center_y + radius,
-                    fill=color, outline="", stipple=""
-                )
+            pulse = 0.5 + 0.5 * math.sin(self._phase)  # 0.0 → 1.0
 
-            # Core sharp orb
-            core_radius = base_radius - 2
-            self._canvas.create_oval(
-                center_x - core_radius, center_y - core_radius,
-                center_x + core_radius, center_y + core_radius,
-                fill=self._orb_color, outline=""
+            core, corona, halo, dark = STATE_COLORS.get(
+                self._state, DEFAULT_PROFILE
             )
 
-        # Schedule next frame in 30ms
-        self._root.after(30, self._animate)
+            # Layer 1: Screen Emissivity Halo (ultra-wide, ultra-soft)
+            self._draw_halo(pulse, halo)
 
-    def _blend_colors(self, color1: str, color2: str, factor: float) -> str:
-        """Blends two hex colors together."""
-        r1, g1, b1 = int(color1[1:3], 16), int(color1[3:5], 16), int(color1[5:7], 16)
-        r2, g2, b2 = int(color2[1:3], 16), int(color2[3:5], 16), int(color2[5:7], 16)
-        
+            # Layer 2: Smoked-glass corona (volumetric depth)
+            self._draw_corona(pulse, dark, corona)
+
+            # Layer 3: Matte outer calibration rings
+            self._draw_calibration_rings()
+
+            # Layer 4: Optical braided wave threads
+            self._draw_wave_braids(pulse, core, corona)
+
+            # Layer 5: Dense convergence core
+            self._draw_core(pulse, core)
+
+        self._root.after(FRAME_MS, self._animate)
+
+    # ── Drawing primitives ───────────────────────────────────
+
+    def _draw_halo(self, pulse: float, halo_color: str) -> None:
+        """Screen emissivity — wide, translucent glow bleeding outward."""
+        for i in range(HALO_RINGS, 0, -1):
+            radius = BASE_RADIUS + 30 + i * 6 * (0.6 + 0.4 * pulse)
+            alpha_factor = (HALO_RINGS - i) / HALO_RINGS * 0.35
+            color = self._blend("#000000", halo_color, alpha_factor * pulse)
+            self._oval(radius, color)
+
+    def _draw_corona(self, pulse: float, dark: str, corona_color: str) -> None:
+        """Volumetric depth — layered concentric translucent rings."""
+        for i in range(CORONA_RINGS, 0, -1):
+            radius = BASE_RADIUS + i * 3.2 * (0.7 + 0.3 * pulse)
+            factor = (CORONA_RINGS - i) / CORONA_RINGS
+            color = self._blend(dark, corona_color, factor * (0.5 + 0.5 * pulse))
+            self._oval(radius, color)
+
+    def _draw_calibration_rings(self) -> None:
+        """High-precision thin outer rings (static anchors)."""
+        # Dashed outer ring
+        r1 = BASE_RADIUS + 38
+        self._canvas.create_oval(
+            CENTER - r1, CENTER - r1, CENTER + r1, CENTER + r1,
+            outline="#3A3F47", width=1, dash=(4, 16),
+        )
+        # Solid outermost ring
+        r2 = BASE_RADIUS + 42
+        self._canvas.create_oval(
+            CENTER - r2, CENTER - r2, CENTER + r2, CENTER + r2,
+            outline="#1F232B", width=1.5,
+        )
+
+    def _draw_wave_braids(self, pulse: float, core: str, corona: str) -> None:
+        """
+        High-frequency optical braiding — rotating arc-pairs that evoke
+        the Celestial Loom SVG's mathematical wave clusters.
+        """
+        for t in range(WAVE_THREADS):
+            angle_offset = (2 * math.pi / WAVE_THREADS) * t + self._rotation
+            # Inner wave (deep indigo/blue anchors)
+            r_inner = BASE_RADIUS + 6 + 8 * pulse
+            self._draw_arc_pair(
+                r_inner, angle_offset, corona, width=2, dash=(2, 2)
+            )
+            # Outer wave (cyan high-frequency strands)
+            r_outer = BASE_RADIUS + 14 + 6 * pulse
+            self._draw_arc_pair(
+                r_outer, angle_offset + 0.3, core, width=1, dash=None
+            )
+
+    def _draw_arc_pair(
+        self, radius: float, angle: float, color: str,
+        width: int = 1, dash: tuple[int, ...] | None = None,
+    ) -> None:
+        """Draws a short arc pair symmetrically around center."""
+        arc_extent = 35  # degrees
+        start_deg = math.degrees(angle)
+        kw: dict = {"outline": color, "width": width, "style": "arc"}
+        if dash:
+            kw["dash"] = dash
+        # Arc A
+        self._canvas.create_arc(
+            CENTER - radius, CENTER - radius,
+            CENTER + radius, CENTER + radius,
+            start=start_deg, extent=arc_extent, **kw,
+        )
+        # Arc B (opposite)
+        self._canvas.create_arc(
+            CENTER - radius, CENTER - radius,
+            CENTER + radius, CENTER + radius,
+            start=start_deg + 180, extent=arc_extent, **kw,
+        )
+
+    def _draw_core(self, pulse: float, core_color: str) -> None:
+        """Dense convergence node — white-hot center with pulsing core."""
+        # Outer white glow
+        glow_r = BASE_RADIUS - 2 + 4 * pulse
+        glow_color = self._blend("#FFFFFF", core_color, 0.3)
+        self._oval(glow_r, glow_color)
+
+        # Inner solid orb
+        core_r = BASE_RADIUS - 6
+        self._oval(core_r, core_color)
+
+        # Hot white center dot
+        dot_r = 5 + 2 * pulse
+        self._oval(dot_r, "#FFFFFF")
+
+    # ── Helpers ──────────────────────────────────────────────
+
+    def _oval(self, radius: float, color: str) -> None:
+        """Shorthand: draw a filled oval centered on the window."""
+        self._canvas.create_oval(
+            CENTER - radius, CENTER - radius,
+            CENTER + radius, CENTER + radius,
+            fill=color, outline="",
+        )
+
+    @staticmethod
+    def _blend(c1: str, c2: str, factor: float) -> str:
+        """Blend two hex colors by a factor (0.0 = c1, 1.0 = c2)."""
+        factor = max(0.0, min(1.0, factor))
+        r1, g1, b1 = int(c1[1:3], 16), int(c1[3:5], 16), int(c1[5:7], 16)
+        r2, g2, b2 = int(c2[1:3], 16), int(c2[3:5], 16), int(c2[5:7], 16)
         r = int(r1 + factor * (r2 - r1))
         g = int(g1 + factor * (g2 - g1))
         b = int(b1 + factor * (b2 - b1))
-        
         return f"#{r:02x}{g:02x}{b:02x}"

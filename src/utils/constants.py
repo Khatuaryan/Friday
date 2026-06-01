@@ -55,6 +55,8 @@ COMMAND_DIR = "~/.cache/friday/commands/"
 STATUS_UPDATE_INTERVAL_S = 1.0
 
 # ── Paths (relative to project root) ────────────────────────
+ASSETS_DIR = "assets"
+ICON_SVG = "assets/friday-icon.svg"
 CONFIG_FILE = "config/friday_config.yaml"
 MODELS_DIR = "models"
 DATA_DIR = "data"
