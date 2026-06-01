@@ -385,6 +385,94 @@ class FridayBrain:
         tool_server = MCPToolServer()
         return tool_server.execute_tool(pending_action)
 
+    def _lazy_load_local_fallback(self) -> None:
+        """Lazy-loads the local Phi-3.5-mini fallback model into memory."""
+        if self._model is not None:
+            return  # Already loaded
+            
+        logger.warning("F.R.I.D.A.Y. is offline or OpenRouter is down. Lazy-loading local Phi-3.5-mini fallback...")
+        from pathlib import Path
+        local_path = "models/phi-3.5-mini-4bit"
+        model_dir = Path(local_path)
+        if not model_dir.exists():
+            raise FileNotFoundError(f"Local fallback model not found at {local_path}. Run 'make download-model' to enable offline fallback.")
+            
+        from mlx_lm import load
+        loaded = load(str(model_dir))
+        self._model, self._tokenizer = loaded[0], loaded[1]
+        logger.info("Local Phi-3.5-mini fallback model loaded successfully.")
+
+    def _generate_local(
+        self,
+        system_prompt: str,
+        session_messages: List[Dict[str, str]],
+    ) -> str:
+        """Local MLX inference generation."""
+        import mlx.core as mx
+        from mlx_lm import generate
+        from mlx_lm.sample_utils import make_sampler, make_logits_processors
+
+        mx.default_stream(mx.gpu)
+        mx.clear_cache()
+
+        # Build full message list for chat template
+        chat_messages = []
+        if system_prompt:
+            chat_messages.append({"role": "system", "content": system_prompt})
+            
+        # Add conversation history
+        for user_msg, assistant_msg in self._conversation_history:
+            chat_messages.append({"role": "user", "content": user_msg})
+            chat_messages.append({"role": "assistant", "content": assistant_msg})
+            
+        # Add current session messages
+        chat_messages.extend(session_messages)
+
+        if self._tokenizer is not None:
+            prompt = self._tokenizer.apply_chat_template(
+                chat_messages,
+                tokenize=False,
+                add_generation_prompt=True
+            )
+        else:
+            # Fallback if tokenizer not loaded (e.g. unit tests)
+            prompt = ""
+            if system_prompt:
+                prompt += f"<|system|>\n{system_prompt}<|end|>\n"
+            for msg in chat_messages:
+                if msg["role"] == "system":
+                    continue
+                prompt += f"<|{msg['role']}|>\n{msg['content']}<|end|>\n"
+            prompt += "<|assistant|>\n"
+
+        response = generate(
+            self._model,
+            self._tokenizer,
+            prompt=prompt,
+            max_tokens=self.max_tokens,
+            sampler=make_sampler(self.temperature),
+            logits_processors=make_logits_processors(
+                repetition_penalty=1.1,
+                repetition_context_size=50
+            ),
+            verbose=False,
+        )
+
+        if "<|end|>" in response:
+            response = response.split("<|end|>")[0]
+
+        # Early stop if the model emits other stop tokens
+        for token in ["<|end_of_text|>", "<start_of_turn>", "<end_of_turn>"]:
+            if token in response:
+                response = response.split(token)[0]
+
+        try:
+            mx.clear_cache()
+        except Exception:
+            pass
+
+        return response.strip()
+
     def _generate(
         self,
         system_prompt: str,
@@ -392,7 +480,7 @@ class FridayBrain:
     ) -> str:
         """
         Single LLM inference pass.
-        If OpenRouter, sends POST request via httpx.
+        If OpenRouter, sends POST request via httpx. Falls back to local Phi-3.5-mini if network fails.
         If local, uses MLX.
         """
         if self.active_model == "openrouter":
@@ -431,7 +519,7 @@ class FridayBrain:
                     "https://openrouter.ai/api/v1/chat/completions",
                     headers=headers,
                     json=payload,
-                    timeout=30.0,
+                    timeout=10.0,
                 )
                 response.raise_for_status()
                 res_json = response.json()
@@ -440,73 +528,15 @@ class FridayBrain:
                 logger.info(f"OpenRouter Gemma 4 generated response in {latency:.2f}s")
                 return content
             except Exception as e:
-                logger.error(f"OpenRouter API call failed: {e}")
-                return "I apologize, but I encountered a connection issue while communicating with my cloud brain module."
+                logger.warning(f"OpenRouter API call failed ({e}). Falling back to local Phi-3.5-mini...")
+                try:
+                    self._lazy_load_local_fallback()
+                    return self._generate_local(system_prompt, session_messages)
+                except Exception as fallback_err:
+                    logger.critical(f"Local fallback generation failed: {fallback_err}")
+                    return "I apologize, but I encountered a connection issue and my local fallback model is unavailable."
         else:
-            import mlx.core as mx
-            from mlx_lm import generate
-            from mlx_lm.sample_utils import make_sampler, make_logits_processors
-
-            mx.default_stream(mx.gpu)
-            mx.clear_cache()
-
-            # Build full message list for chat template
-            chat_messages = []
-            if system_prompt:
-                chat_messages.append({"role": "system", "content": system_prompt})
-                
-            # Add conversation history
-            for user_msg, assistant_msg in self._conversation_history:
-                chat_messages.append({"role": "user", "content": user_msg})
-                chat_messages.append({"role": "assistant", "content": assistant_msg})
-                
-            # Add current session messages
-            chat_messages.extend(session_messages)
-
-            if self._tokenizer is not None:
-                prompt = self._tokenizer.apply_chat_template(
-                    chat_messages,
-                    tokenize=False,
-                    add_generation_prompt=True
-                )
-            else:
-                # Fallback if tokenizer not loaded (e.g. unit tests)
-                prompt = ""
-                if system_prompt:
-                    prompt += f"<|system|>\n{system_prompt}<|end|>\n"
-                for msg in chat_messages:
-                    if msg["role"] == "system":
-                        continue
-                    prompt += f"<|{msg['role']}|>\n{msg['content']}<|end|>\n"
-                prompt += "<|assistant|>\n"
-
-            response = generate(
-                self._model,
-                self._tokenizer,
-                prompt=prompt,
-                max_tokens=self.max_tokens,
-                sampler=make_sampler(self.temperature),
-                logits_processors=make_logits_processors(
-                    repetition_penalty=1.1,
-                    repetition_context_size=50
-                ),
-                verbose=False,
-            )
-
-            if "<|end|>" in response:
-                response = response.split("<|end|>")[0]
-
-            # Early stop if the model emits other stop tokens
-            for token in ["<|end_of_text|>", "<start_of_turn>", "<end_of_turn>"]:
-                if token in response:
-                    response = response.split(token)[0]
-
-            try:
-                mx.clear_cache()
-            except Exception:
-                pass
-
-            return response.strip()
+            return self._generate_local(system_prompt, session_messages)
 
     def _enforce_response_constraints(self, text: str) -> str:
         """
@@ -601,11 +631,53 @@ class FridayBrain:
             
         return response
 
+    def _think_stream_local(
+        self, user_message: str, system_prompt: str | None = None
+    ) -> Generator[str, None, None]:
+        """Stream response tokens using the local Phi-3.5-mini model without committing to history."""
+        import mlx.core as mx
+        from mlx_lm import stream_generate
+        from mlx_lm.sample_utils import make_sampler, make_logits_processors
+
+        mx.default_stream(mx.gpu)
+        mx.clear_cache()
+
+        prompt = self._format_prompt(user_message, system_prompt)
+        full_response = ""
+        
+        try:
+            for response in stream_generate(
+                self._model,
+                self._tokenizer,
+                prompt=prompt,
+                max_tokens=self.max_tokens,
+                sampler=make_sampler(self.temperature),
+                logits_processors=make_logits_processors(repetition_penalty=1.1, repetition_context_size=50),
+            ):
+                token_text = response.text
+                full_response += token_text
+                
+                # Early stop if the model spits out the end token
+                if "<|end|>" in full_response:
+                    clean_text = token_text.replace("<|end|>", "")
+                    if clean_text:
+                        yield clean_text
+                    break
+                    
+                yield token_text
+        finally:
+            # Clear Metal cache after generation to release allocated memory immediately
+            try:
+                mx.clear_cache()
+            except Exception:
+                pass
+
     def think_stream(
         self, user_message: str, system_prompt: str | None = None
     ) -> Generator[str, None, None]:
         """
         Stream response tokens one at a time.
+        If OpenRouter is active, streams from Gemma cloud API, falling back to local Phi-3.5-mini if network fails.
         """
         if not self._loaded:
             raise RuntimeError("Model not loaded. Call load_model() first.")
@@ -640,13 +712,14 @@ class FridayBrain:
             }
             
             full_response = ""
+            yielded_any = False
             try:
                 with httpx.stream(
                     "POST",
                     "https://openrouter.ai/api/v1/chat/completions",
                     headers=headers,
                     json=payload,
-                    timeout=30.0,
+                    timeout=10.0,
                 ) as response:
                     response.raise_for_status()
                     for line in response.iter_lines():
@@ -661,55 +734,36 @@ class FridayBrain:
                                 token_text = data_json["choices"][0]["delta"].get("content", "")
                                 if token_text:
                                     full_response += token_text
+                                    yielded_any = True
                                     yield token_text
                             except Exception:
                                 pass
+                self._add_to_history(user_message, full_response.strip())
             except Exception as e:
-                logger.error(f"OpenRouter streaming call failed: {e}")
-                err_msg = " I encountered a cloud brain connection issue."
-                yield err_msg
-                full_response += err_msg
-                
-            self._add_to_history(user_message, full_response.strip())
-        else:
-            # Ensure MLX GPU stream is ready for this thread and cache is cleared to prevent Metal OOM
-            import mlx.core as mx
-            mx.default_stream(mx.gpu)
-            mx.clear_cache()
-
-            prompt = self._format_prompt(user_message, system_prompt)
-
-            from mlx_lm import stream_generate
-            from mlx_lm.sample_utils import make_sampler, make_logits_processors
-            full_response = ""
-            for response in stream_generate(
-                self._model,
-                self._tokenizer,
-                prompt=prompt,
-                max_tokens=self.max_tokens,
-                sampler=make_sampler(self.temperature),
-                logits_processors=make_logits_processors(repetition_penalty=1.1, repetition_context_size=50),
-            ):
-                token_text = response.text
-                full_response += token_text
-                
-                # Early stop if the model spits out the end token
-                if "<|end|>" in full_response:
-                    clean_text = token_text.replace("<|end|>", "")
-                    if clean_text:
-                        yield clean_text
-                    break
+                logger.warning(f"OpenRouter streaming call failed ({e}). Falling back to local Phi-3.5-mini...")
+                try:
+                    self._lazy_load_local_fallback()
+                    if yielded_any:
+                        yield "\n[Cloud stream interrupted. Falling back to local brain...]\n"
                     
-                yield token_text
-
-            # Commit to history after stream completes
+                    fallback_response = ""
+                    for token in self._think_stream_local(user_message, system_prompt):
+                        fallback_response += token
+                        yield token
+                    
+                    combined_response = (full_response + "\n" + fallback_response).strip()
+                    self._add_to_history(user_message, combined_response)
+                except Exception as fallback_err:
+                    logger.critical(f"Local streaming fallback failed: {fallback_err}")
+                    err_msg = " I apologize, but I encountered a connection issue and my local fallback model is unavailable."
+                    yield err_msg
+                    self._add_to_history(user_message, (full_response + err_msg).strip())
+        else:
+            full_response = ""
+            for token in self._think_stream_local(user_message, system_prompt):
+                full_response += token
+                yield token
             self._add_to_history(user_message, full_response.strip())
-
-            # Clear Metal cache after generation to release allocated memory immediately
-            try:
-                mx.clear_cache()
-            except Exception:
-                pass
 
     def _format_prompt(self, user_message: str, system_prompt: str | None = None) -> str:
         """
