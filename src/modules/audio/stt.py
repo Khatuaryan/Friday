@@ -21,6 +21,8 @@ from typing import Optional, Tuple
 
 
 import numpy as np
+import dotenv
+dotenv.load_dotenv()
 
 logger = get_logger("friday.stt")
 

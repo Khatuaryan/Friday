@@ -108,6 +108,8 @@ def load_config(path: str | Path | None = None) -> FridayConfig:
     Caches the result — subsequent calls return the same instance.
     """
     global _config
+    import dotenv
+    dotenv.load_dotenv()
     if _config is not None:
         return _config
 

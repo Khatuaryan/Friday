@@ -23,6 +23,9 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+import dotenv
+dotenv.load_dotenv()
+
 from src.utils.logger import setup_logging, get_logger
 from src.utils.config import load_config
 

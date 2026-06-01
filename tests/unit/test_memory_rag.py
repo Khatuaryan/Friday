@@ -22,32 +22,41 @@ def test_encryption():
 
 def test_memory_store():
     print("Testing MemoryStore and sqlite-vec...")
-    # Use an in-memory or temp DB for testing to not mess up production DB
+    import os
+    env_backup = os.environ.get("FRIDAY_MEM_BUFFER")
+    os.environ["FRIDAY_MEM_BUFFER"] = "-1.0"
     test_db = PROJECT_ROOT / "data" / "memory" / "test_memory.db"
-    if test_db.exists():
-        test_db.unlink()
+    try:
+        # Use an in-memory or temp DB for testing to not mess up production DB
+        if test_db.exists():
+            test_db.unlink()
         
-    store = MemoryStore(db_path=str(test_db))
-    
-    # 1. Add some data
-    store.add_conversation_turn("user", "My favorite color is emerald.")
-    store.add_fact("Boss loves Python programming.", category="preference")
-    
-    # Wait a moment for background thread to generate embeddings
-    time.sleep(2)
-    
-    # 2. Search
-    results = store.search("What is my favorite color?")
-    assert len(results) > 0, "No results found"
-    
-    found_emerald = False
-    for r in results:
-        if "emerald" in r["content"].lower():
-            found_emerald = True
-            print(f"✅ Found semantic match: {r['content']} (distance: {r['distance']:.4f})")
+        store = MemoryStore(db_path=str(test_db))
+        
+        # 1. Add some data
+        store.add_conversation_turn("user", "My favorite color is emerald.")
+        store.add_fact("Boss loves Python programming.", category="preference")
+        
+        # Wait a moment for background thread to generate embeddings
+        time.sleep(2)
+        
+        # 2. Search
+        results = store.search("What is my favorite color?")
+        assert len(results) > 0, "No results found"
+        
+        found_emerald = False
+        for r in results:
+            if "emerald" in r["content"].lower():
+                found_emerald = True
+                print(f"✅ Found semantic match: {r['content']} (distance: {r['distance']:.4f})")
+                
+        assert found_emerald, "Failed to retrieve the emerald fact"
+    finally:
+        if env_backup is not None:
+            os.environ["FRIDAY_MEM_BUFFER"] = env_backup
+        else:
+            os.environ.pop("FRIDAY_MEM_BUFFER", None)
             
-    assert found_emerald, "Failed to retrieve the emerald fact"
-    
     if test_db.exists():
         test_db.unlink()
     print("✅ MemoryStore test passed")
