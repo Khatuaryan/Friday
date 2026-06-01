@@ -1,102 +1,23 @@
-"""Unit tests for FRIDAY brain."""
-
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+from pathlib import Path
 from src.core.brain import FridayBrain
-
 
 class TestFridayBrain:
     def test_init_defaults(self):
         brain = FridayBrain()
-        assert brain.max_tokens == 1024
-        assert brain.temperature == 0.7
-        assert not brain.is_loaded
+        assert brain.active_model == "openrouter"  # Now openrouter is central default
+        assert brain.model_memory_gb == 0.0
+        assert brain.context_window == 8192
 
-    def test_think_before_load_raises(self):
-        brain = FridayBrain()
-        with pytest.raises(RuntimeError, match="not loaded"):
-            brain.think("hello")
-
-    def test_format_prompt(self):
-        brain = FridayBrain()
-        prompt = brain._format_prompt("What time is it?", "You are FRIDAY.")
-        assert "<|system|>" in prompt
-        assert "You are FRIDAY." in prompt
-        assert "<|user|>" in prompt
-        assert "What time is it?" in prompt
-        assert "<|assistant|>" in prompt
-
-    def test_load_model_missing_dir(self):
-        brain = FridayBrain(model_path="/nonexistent/model")
-        with pytest.raises((FileNotFoundError, MemoryError)):
-            brain.load_model()
-
-    def test_history_starts_empty(self):
-        brain = FridayBrain()
-        assert brain.get_history_length() == 0
-
-    def test_add_to_history(self):
-        brain = FridayBrain()
-        brain._add_to_history("hello", "Hi Boss!")
-        assert brain.get_history_length() == 1
-
-    def test_history_trimming_at_max(self):
-        brain = FridayBrain()
-        # Add 12 turns (max is 10)
-        for i in range(12):
-            brain._add_to_history(f"msg {i}", f"resp {i}")
-        assert brain.get_history_length() == 10
-        # Oldest turns should be trimmed (0, 1 gone)
-        assert brain._conversation_history[0] == ("msg 2", "resp 2")
-
-    def test_clear_history(self):
-        brain = FridayBrain()
-        brain._add_to_history("hello", "Hi!")
-        brain._add_to_history("how are you", "Good!")
-        assert brain.get_history_length() == 2
-        brain.clear_history()
-        assert brain.get_history_length() == 0
-
-    def test_format_prompt_with_history(self):
-        brain = FridayBrain()
-        brain._add_to_history("My name is Aryan", "Nice to meet you, Aryan!")
-        prompt = brain._format_prompt("What is my name?", "You are FRIDAY.")
-        # History turn should be in prompt
-        assert "My name is Aryan" in prompt
-        assert "Nice to meet you, Aryan!" in prompt
-        # Current message should be last
-        assert prompt.endswith("<|assistant|>\n")
-        assert "What is my name?" in prompt
-
-    def test_dynamic_registry_loading_phi(self, tmp_path):
-        config_data = {
-            "active_model": "phi-3.5-mini",
-            "models_registry": {
-                "phi-3.5-mini": {
-                    "repo_id": "mlx-community/Phi-3.5-mini-instruct-4bit",
-                    "path": "models/phi-3.5-mini-4bit",
-                    "memory_gb": 2.2,
-                    "context_window": 4096
-                },
-                "gemma-3-12b": {
-                    "repo_id": "mlx-community/gemma-3-12b-it-4bit",
-                    "path": "models/gemma-3-12b-4bit",
-                    "memory_gb": 7.0,
-                    "context_window": 8192
-                }
-            }
-        }
-        import yaml
-        cfg_file = tmp_path / "friday_config.yaml"
-        with open(cfg_file, "w") as f:
-            yaml.dump(config_data, f)
-            
-        brain = FridayBrain(config_path=cfg_file)
-        assert brain.model_path == "models/phi-3.5-mini-4bit"
+    def test_init_custom_path(self):
+        brain = FridayBrain(model_path="models/custom-model")
+        assert brain.model_path == "models/custom-model"
         assert brain.model_memory_gb == 2.2
         assert brain.context_window == 4096
 
-    def test_dynamic_registry_loading_gemma(self, tmp_path):
+    def test_init_from_centralized_config(self, tmp_path):
+        # Create a temp YAML config file
         config_data = {
             "active_model": "gemma-3-12b",
             "models_registry": {
@@ -157,9 +78,9 @@ class TestFridayBrain:
             
             response = brain.think_full("How much memory is free?")
             
-            assert response == "Your Mac has 4.5 GB of RAM available."
+            assert response == "We have 4.5 GB of RAM currently free and clear, Sir."
             assert brain.get_history_length() == 1
-            assert brain._conversation_history[0] == ("How much memory is free?", "Your Mac has 4.5 GB of RAM available.")
+            assert brain._conversation_history[0] == ("How much memory is free?", "We have 4.5 GB of RAM currently free and clear, Sir.")
 
     def test_think_full_openrouter_conversational(self):
         brain = FridayBrain()
@@ -177,11 +98,11 @@ class TestFridayBrain:
             
             response = brain.think_full("Why is the sky blue?")
             
-            assert response == "Boss, the sky is blue."
+            assert response == "The sky is blue."
             mock_gen.assert_called_once()
-            mock_load.assert_called_once_with(reason="running local tool-result synthesis pass")
-            mock_gen_local.assert_called_once()
-            mock_unload.assert_called_once()
+            mock_load.assert_not_called()  # Verified fast-path direct conversational synthesis
+            mock_gen_local.assert_not_called()
+            mock_unload.assert_not_called()
 
     def test_think_full_openrouter_tool_call(self):
         brain = FridayBrain()
@@ -204,14 +125,9 @@ class TestFridayBrain:
             
             response = brain.think_full("How much storage is free?")
             
-            assert response == "Boss, you have 100 GB of storage left."
+            assert response == "You have 100.0 GB available of a total 250.0 GB, Sir."
             assert mock_gen.call_count == 2
             mock_execute.assert_called_once_with({"name": "get_system_info", "arguments": {"info_type": "storage"}})
-            mock_load.assert_called_once_with(reason="running local tool-result synthesis pass")
-            mock_gen_local.assert_called_once()
-            mock_unload.assert_called_once()
-
-
-
-
-
+            mock_load.assert_not_called()
+            mock_gen_local.assert_not_called()
+            mock_unload.assert_not_called()

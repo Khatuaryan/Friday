@@ -79,6 +79,37 @@ class VoicePipeline:
         # 2. Process with brain (if available)
         if self.brain:
             try:
+                # Check if it is a pure conversational query (no tool keywords) to enable streaming
+                tool_keywords = ["weather", "battery", "storage", "remind", "calendar", "event", "open", "close", "run", "music", "spotify", "clipboard", "shell", "delete", "write", "search", "google", "mail", "message"]
+                is_conversational = not any(kw in command_text.lower() for kw in tool_keywords)
+                
+                if is_conversational and hasattr(self.brain, "think_stream") and getattr(self.brain, "active_model", None) == "openrouter":
+                    logger.info("Pure conversational query detected. Using ultra-low-latency streaming pass...")
+                    from src.core.prompts import LOCAL_SYNTHESIS_SYSTEM_PROMPT
+                    
+                    response_text = ""
+                    sentence_buffer = ""
+                    
+                    # Accumulate and stream-speak sentences incrementally
+                    for token in self.brain.think_stream(command_text, system_prompt=LOCAL_SYNTHESIS_SYSTEM_PROMPT):
+                        response_text += token
+                        sentence_buffer += token
+                        
+                        # Trigger speaking immediately upon sentence boundaries
+                        if any(sentence_buffer.endswith(punct) for punct in (".", "?", "!", "\n", "।")):
+                            clean_sentence = sentence_buffer.strip()
+                            if len(clean_sentence) > 3:
+                                logger.debug("Incremental speak chunk: %s", clean_sentence)
+                                self.tts.speak(clean_sentence, blocking=False)
+                            sentence_buffer = ""
+                    
+                    # Speak remaining tokens
+                    clean_sentence = sentence_buffer.strip()
+                    if len(clean_sentence) > 0:
+                        self.tts.speak(clean_sentence, blocking=True)
+                        
+                    return response_text
+
                 # Use unified thinking path if available
                 if hasattr(self.brain, "think_full"):
                     response_text = self.brain.think_full(command_text, detected_language=detected_lang)

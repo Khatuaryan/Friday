@@ -39,7 +39,13 @@ case "$PRESSURE" in
 esac
 
 # ── Menu bar display ─────────────────────────────────────────
-echo "$ICON ${RSS}MB"
+if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE" 2>/dev/null)" 2>/dev/null; then
+    # Running: click will toggle listening state
+    echo "$ICON ${RSS}MB | bash='touch $COMMAND_DIR/toggle_listening.cmd' terminal=false refresh=true"
+else
+    # Not running: click will start FRIDAY silently in background
+    echo "$ICON ${RSS}MB | bash='cd $FRIDAY_DIR && source .venv/bin/activate && nohup $VENV_PYTHON -m src.core >/dev/null 2>&1 &' terminal=false refresh=true"
+fi
 echo "---"
 
 # Status section
@@ -67,14 +73,14 @@ if [ -f "$PID_FILE" ]; then
         # PID file exists but process is dead — stale
         echo "FRIDAY crashed | color=red"
         echo "---"
-        echo "▶ Start FRIDAY | bash='cd $FRIDAY_DIR && $VENV_PYTHON -m src.core' terminal=true"
+        echo "▶ Start FRIDAY | bash='cd $FRIDAY_DIR && source .venv/bin/activate && nohup $VENV_PYTHON -m src.core >/dev/null 2>&1 &' terminal=false refresh=true"
         # Clean up stale PID
         rm -f "$PID_FILE"
     fi
 else
     # Not running
     echo "---"
-    echo "▶ Start FRIDAY | bash='cd $FRIDAY_DIR && source .venv/bin/activate && $VENV_PYTHON -m src.core' terminal=true"
+    echo "▶ Start FRIDAY | bash='cd $FRIDAY_DIR && source .venv/bin/activate && nohup $VENV_PYTHON -m src.core >/dev/null 2>&1 &' terminal=false refresh=true"
 fi
 
 echo "---"

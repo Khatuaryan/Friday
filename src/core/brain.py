@@ -428,47 +428,19 @@ class FridayBrain:
                 
                 tool_calls_made += 1
 
-            # Step A3: Compile context and lazy-load local Phi-3.5-mini for natural synthesis pass
-            try:
-                self._lazy_load_local_fallback(reason="running local tool-result synthesis pass")
-                
-                if tool_results_history:
-                    json_context = {
-                        "tool_history": tool_results_history
-                    }
-                else:
-                    json_context = {
-                        "conversational_response": conversational_response
-                    }
-
-                # Format local synthesis prompt
-                synthesis_user_msg = f"""\
-Original User Query: {user_message}
-Target Language: {detected_language}
-JSON Context from Cloud/Tools:
-{json.dumps(json_context, indent=2)}
-
-Generate F.R.I.D.A.Y.'s final spoken response to the Boss:
-"""
-                logger.info("Sending context to local Phi for natural speech synthesis...")
-                final_response = self._generate_local(
-                    LOCAL_SYNTHESIS_SYSTEM_PROMPT,
-                    [{"role": "user", "content": synthesis_user_msg}]
+            # Step A3: Fast-path direct synthesis bypass (bypasses local Phi loading/generation overhead to achieve sub-second latency)
+            if tool_results_history:
+                logger.info("Tool results received. Using rapid programmatic FRIDAY synthesis pass...")
+                final_response = self._synthesize_tool_response(
+                    last_tool_name or "",
+                    last_tool_args or {},
+                    tool_results_history[-1]["result"] if isinstance(tool_results_history[-1]["result"], dict) else {},
+                    detected_language
                 )
-                logger.info("Synthesized response from local Phi: %s", final_response)
-            except Exception as synthesis_err:
-                logger.critical(f"Local synthesis pass failed: {synthesis_err}")
-                # Fallback to programmatic synthesis if Phi fails to load/run
-                if tool_results_history:
-                    final_response = self._synthesize_tool_response(
-                        last_tool_name or "",
-                        last_tool_args or {},
-                        tool_results_history[-1]["result"] if isinstance(tool_results_history[-1]["result"], dict) else {},
-                        detected_language
-                    )
-                else:
-                    final_response = conversational_response
-            
+            else:
+                logger.info("Conversational cloud response received. Using direct cloud text pass...")
+                final_response = conversational_response
+
             # Post-process response constraints
             final_response = self._enforce_response_constraints(final_response)
 
@@ -479,13 +451,6 @@ Generate F.R.I.D.A.Y.'s final spoken response to the Boss:
                     self.memory_store.add_conversation_turn("assistant", final_response)
                 except Exception as e:
                     logger.warning(f"Failed to save assistant turn to RAG: {e}")
-
-            # Unload local model from memory immediately
-            if self._model is not None:
-                try:
-                    self.unload_model()
-                except Exception as unload_err:
-                    logger.warning(f"Failed to unload local model: {unload_err}")
 
             return final_response
 
@@ -569,6 +534,7 @@ Generate F.R.I.D.A.Y.'s final spoken response to the Boss:
         """
         Natively/programmatically synthesize JSON tool results into fluent English/Hindi speech,
         completely bypassing the second LLM pass (local and cloud) for ALL queries.
+        Formatted with a refined, witty, and highly proactive FRIDAY persona.
         """
         # Handle errors gracefully first
         if isinstance(tool_result, dict):
@@ -576,11 +542,11 @@ Generate F.R.I.D.A.Y.'s final spoken response to the Boss:
             if error_msg:
                 if "access denied" in error_msg.lower() or "permission" in error_msg.lower():
                     if lang == "hi":
-                        return f"त्रुटि: {tool_name} के लिए अनुमति अस्वीकार कर दी गई है। कृपया सिस्टम सेटिंग्स में पहुंच प्रदान करें।"
-                    return f"Error: Permission denied for {tool_name}. Please grant access in System Settings."
+                        return f"क्षमा करें सर, System Settings में {tool_name} की अनुमति नहीं है।"
+                    return f"I'm afraid permission is denied for that operation, Sir. You may need to adjust System Settings."
                 if lang == "hi":
-                    return f"क्षमा करें, कार्य विफल रहा: {error_msg}।"
-                return f"Sorry, the operation failed: {error_msg}."
+                    return f"क्षमा करें सर, कार्य विफल रहा: {error_msg}।"
+                return f"I'm afraid the operation has failed, Sir: {error_msg}."
 
         # 1. get_weather
         if tool_name == "get_weather":
@@ -593,8 +559,18 @@ Generate F.R.I.D.A.Y.'s final spoken response to the Boss:
             cond_hi = "साफ" if "clear" in cond or "sunny" in cond else "बादल छाए हुए" if "cloud" in cond else "बारिश" if "rain" in cond else cond
             
             if lang == "hi":
-                return f"{loc} में मौसम {cond_hi} है, तापमान {temp} डिग्री सेल्सियस है, जो आर्द्रता के कारण {feels} डिग्री जैसा महसूस हो रहा है।"
-            return f"The weather in {loc} is {cond}. It is {temp}°C, feeling like {feels}°C with {hum}% humidity."
+                return f"सर, {loc} में अभी मौसम {cond_hi} है। तापमान {temp} डिग्री है, जो {feels} डिग्री जैसा महसूस हो रहा है।"
+            
+            tip = ""
+            try:
+                t_val = float(temp)
+                if t_val > 30:
+                    tip = " I'd recommend staying indoors in the climate control, Sir."
+                elif t_val < 15:
+                    tip = " I'd suggest a coat if you intend to go out, Sir."
+            except Exception:
+                pass
+            return f"The conditions in {loc} are currently {cond}, Sir. It is {temp}°C, feeling closer to {feels}°C.{tip}"
 
         # 2. get_system_info
         if tool_name == "get_system_info":
@@ -606,22 +582,30 @@ Generate F.R.I.D.A.Y.'s final spoken response to the Boss:
                 plugged = batt.get("plugged_in", False)
                 time_rem = batt.get("time_remaining", "unknown")
                 
-                plugged_str = "चार्जिंग पर है" if plugged else "बैटरी पर चल रहा है"
-                plugged_str_en = "charging" if plugged else "not plugged in"
-                
                 if lang == "hi":
+                    plugged_str = "चार्जिंग पर है" if plugged else "बैटरी पर चल रहा है"
                     time_str = f", {time_rem} शेष है" if time_rem != "unknown" else ""
-                    return f"आपका मैक अभी {pct} प्रतिशत पर {plugged_str} है{time_str}।"
-                time_str_en = f" with {time_rem} remaining" if time_rem != "unknown" else ""
-                return f"Your Mac is at {pct}% battery and is {plugged_str_en}{time_str_en}."
+                    return f"सर, आपका मैक अभी {pct} प्रतिशत पर {plugged_str} है{time_str}।"
+                
+                state_str = "currently charging" if plugged else "running on internal cells"
+                proactive = ""
+                if not plugged and pct < 20:
+                    proactive = " I strongly suggest connecting the power supply, Sir."
+                return f"We are at {pct}% capacity, Sir, and {state_str}.{proactive}"
                 
             if info_type == "storage":
                 storage = tool_result.get("storage", {})
                 free = storage.get("free_gb", "unknown")
                 total = storage.get("total_gb", "unknown")
                 if lang == "hi":
-                    return f"आपके पास {total} जीबी में से {free} जीबी खाली स्टोरेज उपलब्ध है।"
-                return f"You have {free} GB free storage out of {total} GB."
+                    return f"सर, {total} जीबी में से {free} जीबी खाली स्टोरेज उपलब्ध है।"
+                proactive = ""
+                try:
+                    if float(free) < 20.0:
+                        proactive = " Storage is running slightly low. I can perform a cleanup if you wish, Sir."
+                except Exception:
+                    pass
+                return f"You have {free} GB available of a total {total} GB, Sir.{proactive}"
                 
             if info_type == "memory":
                 mem = tool_result.get("memory", {})
@@ -631,42 +615,44 @@ Generate F.R.I.D.A.Y.'s final spoken response to the Boss:
                 
                 if avail is not None:
                     if lang == "hi":
-                        return f"मैक पर {avail} जीबी रैम मेमोरी उपलब्ध है।"
-                    return f"Your Mac has {avail} GB of RAM available."
+                        return f"सर, मैक पर {avail} जीबी रैम मेमोरी उपलब्ध है।"
+                    return f"We have {avail} GB of RAM currently free and clear, Sir."
                 
                 used = used or "unknown"
                 total = total or "unknown"
                 if lang == "hi":
-                    return f"मैक अभी {total} जीबी में से {used} जीबी रैम मेमोरी का उपयोग कर रहा है।"
-                return f"Your Mac is using {used} GB of RAM out of {total} GB total."
+                    return f"सर, मैक अभी {total} जीबी में से {used} जीबी रैम का उपयोग कर रहा है।"
+                return f"The system is currently utilizing {used} GB of the total {total} GB RAM, Sir."
                 
             if info_type == "time":
                 curr_time = tool_result.get("time", "unknown")
                 if lang == "hi":
-                    return f"अभी समय {curr_time} है।"
-                return f"The current time is {curr_time}."
+                    return f"सर, अभी समय {curr_time} है।"
+                return f"It is currently {curr_time}, Sir."
 
         # 3. get_calendar_events
         if tool_name == "get_calendar_events":
             events = tool_result.get("events", []) if isinstance(tool_result, dict) else tool_result
             if not events:
                 if lang == "hi":
-                    return "आज आपके कैलेंडर में कोई कार्यक्रम निर्धारित नहीं है।"
-                return "You have no events scheduled in your calendar for today."
+                    return "सर, आज आपके कैलेंडर में कोई कार्यक्रम निर्धारित नहीं है।"
+                return "Your calendar is pleasantly empty for today, Sir."
             
             event_titles = [f"'{ev.get('title', 'Meeting')}' at {ev.get('start_time', 'scheduled time')}" for ev in events[:3]]
             joined_events = ", ".join(event_titles)
             if lang == "hi":
-                return f"आपके पास आज {len(events)} कार्यक्रम हैं: {joined_events}।"
-            return f"You have {len(events)} events today: {joined_events}."
+                return f"सर, आपके पास आज {len(events)} कार्यक्रम हैं: {joined_events}।"
+            return f"You have {len(events)} events on the schedule today, Sir: {joined_events}."
 
         # 4. control_application
         if tool_name == "control_application":
             action = tool_args.get("action", "open")
             app = tool_args.get("app_name", "Application")
             if lang == "hi":
-                return f"आपकी {app} {'खोल दी गई है' if action == 'open' else 'बंद कर दी गई है'}।"
-            return f"I have {action}ed {app} for you."
+                status = "खोल दी गई है" if action == "open" else "बंद कर दी गई है"
+                return f"सर, आपकी {app} {status}।"
+            verb = "opened" if action == "open" else "closed"
+            return f"I have successfully {verb} {app} for you, Sir."
 
         # 5. control_media
         if tool_name == "control_media":
@@ -674,33 +660,33 @@ Generate F.R.I.D.A.Y.'s final spoken response to the Boss:
             if action == "volume":
                 vol = tool_args.get("value", 50)
                 if lang == "hi":
-                    return f"आवाज़ को {vol} प्रतिशत पर सेट कर दिया गया है।"
-                return f"System volume set to {vol} percent."
+                    return f"सर, आवाज़ को {vol} प्रतिशत पर सेट कर दिया गया है।"
+                return f"Volume adjusted to {vol} percent, Sir."
             if action == "mute":
                 if lang == "hi":
-                    return "आवाज़ बंद कर दी गई है।"
-                return "System volume muted."
+                    return "आवाज़ बंद कर दी गई है, सर।"
+                return "Audio muted, Sir."
             if action == "unmute":
                 if lang == "hi":
-                    return "आवाज़ चालू कर दी गई है।"
-                return "System volume unmuted."
+                    return "आवाज़ चालू कर दी गई है, सर।"
+                return "Audio restored, Sir."
             if lang == "hi":
-                return f"मीडिया को {action} कर दिया गया है।"
-            return f"Media {action}ed."
+                return f"मीडिया को {action} कर दिया गया है, सर।"
+            return f"Playback has been {action}ed, Sir."
 
         # 6. clipboard
         if tool_name == "clipboard":
             action = tool_args.get("action", "get")
             if action == "set":
                 if lang == "hi":
-                    return "मैंने टेक्स्ट को आपके क्लिपबोर्ड पर कॉपी कर दिया है।"
-                return "Text successfully copied to your clipboard."
+                    return "सर, मैंने टेक्स्ट को आपके क्लिपबोर्ड पर कॉपी कर दिया है।"
+                return "Text successfully copied to your clipboard, Sir."
             if action == "get":
                 text = tool_result.get("text", "")
                 short_text = text[:100] + "..." if len(text) > 100 else text
                 if lang == "hi":
-                    return f"आपके क्लिपबोर्ड का टेक्स्ट है: {short_text}"
-                return f"The text in your clipboard is: {short_text}"
+                    return f"सर, आपके क्लिपबोर्ड पर यह है: {short_text}"
+                return f"The clipboard contains the following, Sir: {short_text}"
 
         # 7. manage_reminders
         if tool_name == "manage_reminders":
@@ -708,12 +694,12 @@ Generate F.R.I.D.A.Y.'s final spoken response to the Boss:
             title = tool_args.get("title", "Reminder")
             if action == "create":
                 if lang == "hi":
-                    return f"स्मरणपत्र '{title}' सफलतापूर्वक जोड़ दिया गया है।"
-                return f"Reminder '{title}' successfully created."
+                    return f"सर, स्मरणपत्र '{title}' जोड़ दिया गया है।"
+                return f"Reminder for '{title}' has been successfully logged, Sir."
             if action == "complete":
                 if lang == "hi":
-                    return f"स्मरणपत्र '{title}' पूरा कर दिया गया है।"
-                return f"Reminder '{title}' marked as completed."
+                    return f"सर, स्मरणपत्र '{title}' पूरा कर दिया गया है।"
+                return f"I've marked the reminder for '{title}' as completed, Sir."
 
         # 8. manage_calendar
         if tool_name == "manage_calendar":
@@ -722,8 +708,8 @@ Generate F.R.I.D.A.Y.'s final spoken response to the Boss:
             start = tool_args.get("start_time", "scheduled time")
             if action == "create":
                 if lang == "hi":
-                    return f"कैलेंडर कार्यक्रम '{title}' सफलतापूर्वक {start} के लिए जोड़ दिया गया है।"
-                return f"Calendar event '{title}' successfully created for {start}."
+                    return f"सर, कैलेंडर कार्यक्रम '{title}' सफलतापूर्वक {start} के लिए जोड़ दिया गया है।"
+                return f"I've successfully scheduled '{title}' for {start}, Sir."
 
         # 9. read_file / write_filesystem
         if tool_name in ["read_file", "write_filesystem"]:
@@ -733,19 +719,19 @@ Generate F.R.I.D.A.Y.'s final spoken response to the Boss:
                 content = tool_result.get("content", "")
                 short_content = content[:100] + "..." if len(content) > 100 else content
                 if lang == "hi":
-                    return f"फ़ाइल {filename} की सामग्री है: {short_content}"
-                return f"File {filename} contents are: {short_content}"
+                    return f"सर, फ़ाइल {filename} की सामग्री है: {short_content}"
+                return f"The contents of {filename} read as follows, Sir: {short_content}"
             if tool_name == "write_filesystem":
                 if lang == "hi":
-                    return f"फ़ाइल {filename} सफलतापूर्वक लिख दी गई है।"
-                return f"File {filename} successfully written to disk."
+                    return f"सर, फ़ाइल {filename} लिख दी गई है।"
+                return f"I've written those changes to {filename}, Sir."
 
         # 10. send_message
         if tool_name == "send_message":
             recipient = tool_args.get("recipient", "contact")
             if lang == "hi":
-                return f"{recipient} को संदेश भेज दिया गया है।"
-            return f"iMessage sent successfully to {recipient}."
+                return f"सर, {recipient} को संदेश भेज दिया गया है।"
+            return f"The iMessage has been dispatched to {recipient}, Sir."
 
         # 11. manage_email
         if tool_name == "manage_email":
@@ -753,39 +739,39 @@ Generate F.R.I.D.A.Y.'s final spoken response to the Boss:
             recipient = tool_args.get("recipient", "recipient")
             if action == "send":
                 if lang == "hi":
-                    return f"{recipient} को ईमेल भेज दिया गया है।"
-                return f"Email sent successfully to {recipient}."
+                    return f"सर, {recipient} को ईमेल भेज दिया गया है।"
+                return f"The email has been sent to {recipient}, Sir."
             if action == "draft":
                 if lang == "hi":
-                    return f"{recipient} के लिए ईमेल ड्राफ्ट तैयार कर दिया गया है।"
-                return f"Email draft prepared for {recipient}."
+                    return f"सर, {recipient} के लिए ईमेल ड्राफ्ट तैयार कर दिया गया है।"
+                return f"I've prepared that email draft for {recipient}, Sir."
 
         # 12. execute_shell
         if tool_name == "execute_shell":
             stdout = tool_result.get("stdout", "").strip()
             short_stdout = stdout[:100] + "..." if len(stdout) > 100 else stdout
             if lang == "hi":
-                return f"शेल कमांड निष्पादित। आउटपुट: {short_stdout or 'सफलता'}"
-            return f"Shell command executed successfully. Output: {short_stdout or 'success'}"
+                return f"सर, शेल कमांड निष्पादित। आउटपुट: {short_stdout or 'सफलता'}"
+            return f"Command executed successfully, Sir. Output: {short_stdout or 'success'}"
 
         # 13. web_search
         if tool_name == "web_search":
             results = tool_result.get("results", []) if isinstance(tool_result, dict) else tool_result
             if not results:
                 if lang == "hi":
-                    return "खोज के कोई परिणाम नहीं मिले।"
-                return "No search results found."
+                    return "सर, खोज के कोई परिणाम नहीं मिले।"
+                return "I'm afraid search queries returned zero results, Sir."
             snippet = results[0].get("snippet", "") if isinstance(results, list) and results else str(results)
             short_snippet = snippet[:150] + "..." if len(snippet) > 150 else snippet
             if lang == "hi":
-                return f"खोज परिणाम: {short_snippet}"
-            return f"Search result: {short_snippet}"
+                return f"सर, खोज परिणाम: {short_snippet}"
+            return f"I've found the following on the web, Sir: {short_snippet}"
 
         # Default fallback programmatic representation
         formatted_result = str(tool_result)[:150]
         if lang == "hi":
-            return f"कार्य {tool_name} पूरा हो गया। परिणाम: {formatted_result}।"
-        return f"Task {tool_name} completed. Result: {formatted_result}."
+            return f"सर, कार्य {tool_name} पूरा हो गया है। परिणाम: {formatted_result}।"
+        return f"Task completed, Sir. Result: {formatted_result}."
 
     def _lazy_load_local_fallback(self, reason: str | None = None) -> None:
         """Lazy-loads the local Phi-3.5-mini fallback model into memory."""

@@ -84,6 +84,11 @@ class ActivationHandler:
         self._stt = SpeechToText()
         self._tts = TextToSpeech()
 
+        # Initialize floating glowing overlay
+        from src.utils.overlay import FridayOverlay
+        self.overlay = FridayOverlay()
+        self.overlay.start()
+
         brain = None
         if self.load_brain:
             try:
@@ -145,6 +150,8 @@ class ActivationHandler:
             self._tts.stop()
         if self.ipc_bridge:
             self.ipc_bridge.stop()
+        if hasattr(self, "overlay") and self.overlay:
+            self.overlay.stop()
         self._set_state(ActivationState.IDLE)
         logger.info("Activation handler stopped")
 
@@ -259,5 +266,12 @@ class ActivationHandler:
             logger.debug("State: %s → %s", old.value, new_state.value)
             if self.ipc_bridge:
                 self.ipc_bridge.write_status(new_state.value)
+            
+            # Control overlay visibility and colors based on state
+            if hasattr(self, "overlay") and self.overlay:
+                if new_state in (ActivationState.VERIFYING, ActivationState.READY, ActivationState.PROCESSING, ActivationState.SPEAKING):
+                    self.overlay.show(new_state.value)
+                else:
+                    self.overlay.hide()
 
 
