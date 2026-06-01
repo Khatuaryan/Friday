@@ -34,7 +34,7 @@ class SystemTool(Tool):
             "properties": {
                 "info_type": {
                     "type": "string",
-                    "enum": ["battery", "storage", "memory", "network", "all", "screenshot", "set_volume"],
+                    "enum": ["battery", "storage", "memory", "network", "time", "all", "screenshot", "set_volume"],
                     "description": "Type of information to retrieve or system action to perform",
                 },
                 "volume": {
@@ -47,26 +47,42 @@ class SystemTool(Tool):
             "required": ["info_type"],
         }
 
-    def execute(self, info_type: str = "all", volume: int | None = None) -> Dict[str, Any]:
+    def execute(self, info_type: str | None = None, volume: int | None = None) -> Dict[str, Any]:
         """Get system info or perform system action."""
+        if not info_type:
+            return {"error": "Missing required parameter 'info_type'."}
+
         handlers = {
             "battery": self._get_battery,
             "storage": self._get_storage,
             "memory": self._get_memory,
             "network": self._get_network,
+            "time": self._get_time,
             "screenshot": self._take_screenshot,
             "set_volume": lambda: self._set_volume(volume),
         }
 
         if info_type == "all":
             # Exclude actions from the 'all' option
-            info_keys = ["battery", "storage", "memory", "network"]
+            info_keys = ["battery", "storage", "memory", "network", "time"]
             return {k: handlers[k]() for k in info_keys}
 
         if info_type in handlers:
             return {info_type: handlers[info_type]()}
 
         return {"error": f"Unknown info type: {info_type}"}
+
+    @staticmethod
+    def _get_time() -> Dict[str, Any]:
+        """Get current local time and date."""
+        import time
+        from datetime import datetime
+        now = datetime.now()
+        return {
+            "iso": now.isoformat(),
+            "formatted": now.strftime("%A, %B %d, %Y, %I:%M %p").strip(),
+            "timestamp": time.time(),
+        }
 
     @staticmethod
     def _get_battery() -> Dict[str, Any]:

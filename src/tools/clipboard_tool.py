@@ -42,7 +42,9 @@ class ClipboardTool(Tool):
             "required": ["action"],
         }
 
-    def execute(self, action: str, text: str | None = None) -> Dict[str, Any]:
+    def execute(self, action: str | None = None, text: str | None = None) -> Dict[str, Any]:
+        if not action:
+            return {"error": "Missing required parameter 'action'. Must be 'get' or 'set'."}
         if action == "get":
             return self._get_clipboard()
         elif action == "set":

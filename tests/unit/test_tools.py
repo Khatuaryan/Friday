@@ -39,6 +39,19 @@ class TestSystemTool:
         result = tool.execute(info_type="invalid")
         assert "error" in result
 
+    def test_time_info(self):
+        tool = SystemTool()
+        result = tool.execute(info_type="time")
+        assert "time" in result
+        assert "formatted" in result["time"]
+        assert "timestamp" in result["time"]
+
+    def test_robust_execute(self):
+        tool = SystemTool()
+        result = tool.execute()
+        assert "error" in result
+        assert "Missing required parameter" in result["error"]
+
 
 class TestFileTool:
     def test_name(self):
@@ -257,6 +270,13 @@ class TestClipboardTool:
         get_res = tool.execute(action="get")
         assert test_str in get_res["content"]
         assert get_res["length"] >= len(test_str)
+
+    def test_robust_execute_missing_action(self):
+        from src.tools.clipboard_tool import ClipboardTool
+        tool = ClipboardTool()
+        result = tool.execute()
+        assert "error" in result
+        assert "Missing required parameter" in result["error"]
 
 
 class TestCalendarWriteTool:
