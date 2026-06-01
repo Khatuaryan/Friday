@@ -480,12 +480,13 @@ class FridayBrain:
     ) -> str:
         """
         Single LLM inference pass.
-        If OpenRouter, sends POST request via httpx. Falls back to local Phi-3.5-mini if network fails.
+        If OpenRouter, sends POST request via httpx with retry-backoff. Falls back to local Phi-3.5-mini if all fails.
         If local, uses MLX.
         """
         if self.active_model == "openrouter":
             import httpx
             import json
+            import time
             
             chat_messages = []
             if system_prompt:
@@ -513,28 +514,39 @@ class FridayBrain:
                 "max_tokens": self.max_tokens,
             }
             
-            start = time.perf_counter()
-            try:
-                response = httpx.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers=headers,
-                    json=payload,
-                    timeout=10.0,
-                )
-                response.raise_for_status()
-                res_json = response.json()
-                content = res_json["choices"][0]["message"]["content"].strip()
-                latency = time.perf_counter() - start
-                logger.info(f"OpenRouter Gemma 4 generated response in {latency:.2f}s")
-                return content
-            except Exception as e:
-                logger.warning(f"OpenRouter API call failed ({e}). Falling back to local Phi-3.5-mini...")
+            max_attempts = 3
+            backoff_base = 2.0
+            content = None
+            
+            for attempt in range(max_attempts):
                 try:
-                    self._lazy_load_local_fallback()
-                    return self._generate_local(system_prompt, session_messages)
-                except Exception as fallback_err:
-                    logger.critical(f"Local fallback generation failed: {fallback_err}")
-                    return "I apologize, but I encountered a connection issue and my local fallback model is unavailable."
+                    start = time.perf_counter()
+                    response = httpx.post(
+                        "https://openrouter.ai/api/v1/chat/completions",
+                        headers=headers,
+                        json=payload,
+                        timeout=10.0,
+                    )
+                    response.raise_for_status()
+                    res_json = response.json()
+                    content = res_json["choices"][0]["message"]["content"].strip()
+                    latency = time.perf_counter() - start
+                    logger.info(f"OpenRouter Gemma 4 generated response in {latency:.2f}s (attempt {attempt + 1})")
+                    return content
+                except Exception as e:
+                    if attempt < max_attempts - 1:
+                        sleep_time = backoff_base * (2 ** attempt)
+                        logger.warning(f"OpenRouter API call attempt {attempt + 1} failed ({e}). Retrying in {sleep_time:.1f}s...")
+                        time.sleep(sleep_time)
+                    else:
+                        logger.warning(f"OpenRouter API call failed after {max_attempts} attempts ({e}). Falling back to local Phi-3.5-mini...")
+                        try:
+                            self._lazy_load_local_fallback()
+                            return self._generate_local(system_prompt, session_messages)
+                        except Exception as fallback_err:
+                            logger.critical(f"Local fallback generation failed: {fallback_err}")
+                            return "I apologize, but I encountered a connection issue and my local fallback model is unavailable."
+            return content or ""
         else:
             return self._generate_local(system_prompt, session_messages)
 
@@ -677,7 +689,7 @@ class FridayBrain:
     ) -> Generator[str, None, None]:
         """
         Stream response tokens one at a time.
-        If OpenRouter is active, streams from Gemma cloud API, falling back to local Phi-3.5-mini if network fails.
+        If OpenRouter is active, streams from Gemma cloud API with retry-backoff, falling back to local Phi-3.5-mini if all fails.
         """
         if not self._loaded:
             raise RuntimeError("Model not loaded. Call load_model() first.")
@@ -685,6 +697,7 @@ class FridayBrain:
         if self.active_model == "openrouter":
             import httpx
             import json
+            import time
             
             chat_messages = []
             from src.core.prompts import DEFAULT_SYSTEM_PROMPT
@@ -711,59 +724,80 @@ class FridayBrain:
                 "stream": True,
             }
             
+            max_attempts = 3
+            backoff_base = 2.0
             full_response = ""
             yielded_any = False
-            try:
-                with httpx.stream(
-                    "POST",
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers=headers,
-                    json=payload,
-                    timeout=10.0,
-                ) as response:
-                    response.raise_for_status()
-                    for line in response.iter_lines():
-                        if not line:
-                            continue
-                        if line.startswith("data: "):
-                            data_str = line[6:].strip()
-                            if data_str == "[DONE]":
-                                break
-                            try:
-                                data_json = json.loads(data_str)
-                                token_text = data_json["choices"][0]["delta"].get("content", "")
-                                if token_text:
-                                    full_response += token_text
-                                    yielded_any = True
-                                    yield token_text
-                            except Exception:
-                                pass
-                self._add_to_history(user_message, full_response.strip())
-            except Exception as e:
-                logger.warning(f"OpenRouter streaming call failed ({e}). Falling back to local Phi-3.5-mini...")
+            
+            for attempt in range(max_attempts):
                 try:
-                    self._lazy_load_local_fallback()
+                    with httpx.stream(
+                        "POST",
+                        "https://openrouter.ai/api/v1/chat/completions",
+                        headers=headers,
+                        json=payload,
+                        timeout=10.0,
+                    ) as response:
+                        response.raise_for_status()
+                        for line in response.iter_lines():
+                            if not line:
+                                continue
+                            if line.startswith("data: "):
+                                data_str = line[6:].strip()
+                                if data_str == "[DONE]":
+                                    break
+                                try:
+                                    data_json = json.loads(data_str)
+                                    token_text = data_json["choices"][0]["delta"].get("content", "")
+                                    if token_text:
+                                        full_response += token_text
+                                        yielded_any = True
+                                        yield token_text
+                                except Exception:
+                                    pass
+                    self._add_to_history(user_message, full_response.strip())
+                    break
+                except Exception as e:
+                    # If we succeeded in yielding any tokens, do not retry from the beginning (to prevent duplicate output)
                     if yielded_any:
-                        yield "\n[Cloud stream interrupted. Falling back to local brain...]\n"
+                        logger.warning(f"OpenRouter streaming interrupted mid-stream ({e}). Falling back to local Phi-3.5-mini...")
+                        try:
+                            self._lazy_load_local_fallback()
+                            yield "\n[Cloud stream interrupted. Falling back to local brain...]\n"
+                            
+                            fallback_response = ""
+                            for token in self._think_stream_local(user_message, system_prompt):
+                                fallback_response += token
+                                yield token
+                            
+                            combined_response = (full_response + "\n" + fallback_response).strip()
+                            self._add_to_history(user_message, combined_response)
+                        except Exception as fallback_err:
+                            logger.critical(f"Local streaming fallback failed: {fallback_err}")
+                            err_msg = " I apologize, but I encountered a connection issue and my local fallback model is unavailable."
+                            yield err_msg
+                            self._add_to_history(user_message, (full_response + err_msg).strip())
+                        break
                     
-                    fallback_response = ""
-                    for token in self._think_stream_local(user_message, system_prompt):
-                        fallback_response += token
-                        yield token
-                    
-                    combined_response = (full_response + "\n" + fallback_response).strip()
-                    self._add_to_history(user_message, combined_response)
-                except Exception as fallback_err:
-                    logger.critical(f"Local streaming fallback failed: {fallback_err}")
-                    err_msg = " I apologize, but I encountered a connection issue and my local fallback model is unavailable."
-                    yield err_msg
-                    self._add_to_history(user_message, (full_response + err_msg).strip())
-        else:
-            full_response = ""
-            for token in self._think_stream_local(user_message, system_prompt):
-                full_response += token
-                yield token
-            self._add_to_history(user_message, full_response.strip())
+                    # If we haven't yielded any tokens yet, wait and retry
+                    if attempt < max_attempts - 1:
+                        sleep_time = backoff_base * (2 ** attempt)
+                        logger.warning(f"OpenRouter streaming attempt {attempt + 1} failed ({e}). Retrying in {sleep_time:.1f}s...")
+                        time.sleep(sleep_time)
+                    else:
+                        logger.warning(f"OpenRouter streaming failed after {max_attempts} attempts ({e}). Falling back to local Phi-3.5-mini...")
+                        try:
+                            self._lazy_load_local_fallback()
+                            fallback_response = ""
+                            for token in self._think_stream_local(user_message, system_prompt):
+                                fallback_response += token
+                                yield token
+                            self._add_to_history(user_message, fallback_response.strip())
+                        except Exception as fallback_err:
+                            logger.critical(f"Local streaming fallback failed: {fallback_err}")
+                            err_msg = " I apologize, but I encountered a connection issue and my local fallback model is unavailable."
+                            yield err_msg
+                            self._add_to_history(user_message, err_msg.strip())
 
     def _format_prompt(self, user_message: str, system_prompt: str | None = None) -> str:
         """
