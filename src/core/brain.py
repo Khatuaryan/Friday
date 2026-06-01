@@ -74,7 +74,7 @@ class FridayBrain:
                 self.openrouter_model = self.openrouter_config.model
             else:
                 self.openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "")
-                self.openrouter_model = "google/gemma-4-31b-it:free"
+                self.openrouter_model = "google/gemma-4-31b-it"
             logger.info(f"Using OpenRouter Brain Engine: model={self.openrouter_model}")
         elif config and hasattr(config, "models_registry") and self.active_model in config.models_registry:
             model_cfg = config.models_registry[self.active_model]

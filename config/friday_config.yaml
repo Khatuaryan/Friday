@@ -12,7 +12,7 @@ active_model: "openrouter"
 
 openrouter:
   api_key: "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"
-  model: "google/gemma-4-31b-it:free"
+  model: "google/gemma-4-31b-it"
 
 models_registry:
   phi-3.5-mini:
