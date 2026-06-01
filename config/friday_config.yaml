@@ -84,6 +84,7 @@ memory:
   auto_cleanup: true
   max_conversation_turns: 10  # Limited for 8GB
   max_rag_results: 5
+  safety_buffer_gb: -1.0      # Set to <0 to bypass memory check (essential for M-series 8GB machines under standard usage)
 
 context:
   max_history_turns: 10

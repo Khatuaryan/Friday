@@ -77,6 +77,7 @@ class MemoryManager:
         check_interval: float = 30.0,
     ) -> None:
         # Load from YAML config if provided
+        safety_buffer_gb = 1.0
         if config_path and Path(config_path).exists():
             with open(config_path) as f:
                 cfg = yaml.safe_load(f)
@@ -86,11 +87,13 @@ class MemoryManager:
             critical_threshold = hw.get("critical_threshold", critical_threshold)
             mem_cfg = cfg.get("memory", {})
             check_interval = mem_cfg.get("check_interval_seconds", check_interval)
+            safety_buffer_gb = mem_cfg.get("safety_buffer_gb", safety_buffer_gb)
 
         self.friday_budget_gb = friday_budget_gb
         self.warning_threshold = warning_threshold
         self.critical_threshold = critical_threshold
         self.check_interval = check_interval
+        self.safety_buffer_gb = safety_buffer_gb
 
         self._process = psutil.Process(os.getpid())
         self._running = False
@@ -133,7 +136,7 @@ class MemoryManager:
         """
         # Allow overriding buffer for constrained 8GB systems
         import os
-        buffer_gb = float(os.getenv("FRIDAY_MEM_BUFFER", 1.0))
+        buffer_gb = float(os.getenv("FRIDAY_MEM_BUFFER", self.safety_buffer_gb))
         
         if buffer_gb < 0:
             logger.warning("FRIDAY_MEM_BUFFER is negative. Bypassing all memory checks for model load.")

@@ -55,6 +55,8 @@ class MemoryConfig(BaseModel):
     auto_cleanup: bool = True
     max_conversation_turns: int = 10
     max_rag_results: int = 5
+    safety_buffer_gb: float = 1.0
+
 
 
 class FridayConfig(BaseModel):
