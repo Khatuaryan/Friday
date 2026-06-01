@@ -316,7 +316,18 @@ class FridayBrain:
         tool_calls_made = 0
 
         while tool_calls_made <= max_tool_calls:
-            raw_response = self._generate(system_prompt, session_messages)
+            # If primary brain is OpenRouter and we already executed a tool, route the next 
+            # synthesis pass to the local lazy-loaded model to prevent OpenRouter 429 rate limits.
+            if self.active_model == "openrouter" and tool_calls_made > 0:
+                try:
+                    self._lazy_load_local_fallback()
+                    raw_response = self._generate_local(system_prompt, session_messages)
+                except Exception as fallback_err:
+                    logger.critical(f"Local fallback tool synthesis failed: {fallback_err}")
+                    raw_response = "I apologize, but I encountered an error during local response synthesis."
+            else:
+                raw_response = self._generate(system_prompt, session_messages)
+                
             tool_call = tool_server.parse_tool_call(raw_response)
 
             if not tool_call or tool_calls_made == max_tool_calls:
@@ -362,6 +373,13 @@ class FridayBrain:
                 self.memory_store.add_conversation_turn("assistant", final_response)
             except Exception as e:
                 logger.warning(f"Failed to save assistant turn to RAG store: {e}")
+
+        # Unload local fallback model if it was lazy-loaded to conserve RAM
+        if self.active_model == "openrouter" and self._model is not None:
+            try:
+                self.unload_model()
+            except Exception as unload_err:
+                logger.warning(f"Failed to unload local model: {unload_err}")
 
         return final_response
 
@@ -923,7 +941,10 @@ class FridayBrain:
             del self._tokenizer
             self._model = None
             self._tokenizer = None
-            self._loaded = False
+            
+            # Keep brain loaded if active model is OpenRouter so next request works
+            if self.active_model != "openrouter":
+                self._loaded = False
 
             try:
                 import mlx.core as mx
