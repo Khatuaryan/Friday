@@ -320,7 +320,7 @@ class FridayBrain:
             # synthesis pass to the local lazy-loaded model to prevent OpenRouter 429 rate limits.
             if self.active_model == "openrouter" and tool_calls_made > 0:
                 try:
-                    self._lazy_load_local_fallback()
+                    self._lazy_load_local_fallback(reason="running local tool-result synthesis pass")
                     raw_response = self._generate_local(system_prompt, session_messages)
                 except Exception as fallback_err:
                     logger.critical(f"Local fallback tool synthesis failed: {fallback_err}")
@@ -403,12 +403,15 @@ class FridayBrain:
         tool_server = MCPToolServer()
         return tool_server.execute_tool(pending_action)
 
-    def _lazy_load_local_fallback(self) -> None:
+    def _lazy_load_local_fallback(self, reason: str | None = None) -> None:
         """Lazy-loads the local Phi-3.5-mini fallback model into memory."""
         if self._model is not None:
             return  # Already loaded
             
-        logger.warning("F.R.I.D.A.Y. is offline or OpenRouter is down. Lazy-loading local Phi-3.5-mini fallback...")
+        if reason:
+            logger.info("Lazy-loading local Phi-3.5-mini (%s)...", reason)
+        else:
+            logger.warning("F.R.I.D.A.Y. is offline or OpenRouter is down. Lazy-loading local Phi-3.5-mini fallback...")
         from pathlib import Path
         local_path = "models/phi-3.5-mini-4bit"
         model_dir = Path(local_path)
@@ -418,7 +421,7 @@ class FridayBrain:
         from mlx_lm import load
         loaded = load(str(model_dir))
         self._model, self._tokenizer = loaded[0], loaded[1]
-        logger.info("Local Phi-3.5-mini fallback model loaded successfully.")
+        logger.info("Local Phi-3.5-mini model loaded successfully.")
 
     def _generate_local(
         self,
