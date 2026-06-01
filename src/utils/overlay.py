@@ -25,8 +25,8 @@ from src.utils.logger import get_logger
 
 logger = get_logger("friday.overlay")
 
-# ── Icon asset path (SVG reference for documentation) ────────
-ICON_SVG = Path(__file__).resolve().parent.parent.parent / "assets" / "friday-icon.svg"
+# ── Icon asset path (PNG reference for SwiftBar/docs) ────────
+ICON_PNG = Path(__file__).resolve().parent.parent.parent / "assets" / "friday-icon.png"
 
 # ── State color profiles ─────────────────────────────────────
 # Each state maps to:  (core_color, corona_color, halo_color, dark_base)

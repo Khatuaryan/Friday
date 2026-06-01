@@ -9,7 +9,7 @@ COMMAND_DIR="$HOME/.cache/friday/commands"
 FRIDAY_DIR="$HOME/PycharmProjects/Friday"
 VENV_PYTHON="$FRIDAY_DIR/.venv/bin/python"
 
-ICON_SVG="$FRIDAY_DIR/assets/friday-icon.svg"
+ICON_FILE="$FRIDAY_DIR/assets/friday-icon-menubar.png"
 
 # ── Read status ──────────────────────────────────────────────
 if [ -f "$STATUS_FILE" ]; then
@@ -22,19 +22,19 @@ else
     PRESSURE="normal"
 fi
 
-# ── Status icon (SVG with fallback to emoji) ─────────────────
-if [ -f "$ICON_SVG" ]; then
-    ICON_B64=$(base64 < "$ICON_SVG" | tr -d '\n')
-    ICON_PART="| templateImage=$ICON_B64"
+# ── Status icon (PNG with fallback to emoji) ─────────────────
+if [ -f "$ICON_FILE" ]; then
+    ICON_B64=$(base64 < "$ICON_FILE" | tr -d '\n')
+    ICON_PARAM="image=$ICON_B64"
 else
     case "$STATE" in
-        "idle"|"listening")  ICON_PART="🟢" ;;
-        "verifying")         ICON_PART="🔵" ;;
-        "ready")             ICON_PART="🔵" ;;
-        "processing")        ICON_PART="🟡" ;;
-        "speaking")          ICON_PART="🔊" ;;
-        "offline")           ICON_PART="⚫" ;;
-        *)                   ICON_PART="⚪" ;;
+        "idle"|"listening")  ICON_PARAM="sfimage=mic.fill" ;;
+        "verifying")         ICON_PARAM="sfimage=person.crop.circle.badge.checkmark" ;;
+        "ready")             ICON_PARAM="sfimage=checkmark.circle.fill" ;;
+        "processing")        ICON_PARAM="sfimage=brain.head.profile" ;;
+        "speaking")          ICON_PARAM="sfimage=speaker.wave.3.fill" ;;
+        "offline")           ICON_PARAM="sfimage=power" ;;
+        *)                   ICON_PARAM="sfimage=questionmark.circle" ;;
     esac
 fi
 
@@ -48,10 +48,10 @@ esac
 # ── Menu bar display ─────────────────────────────────────────
 if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE" 2>/dev/null)" 2>/dev/null; then
     # Running: click will toggle listening state
-    echo "${RSS}MB $ICON_PART bash='touch $COMMAND_DIR/toggle_listening.cmd' terminal=false refresh=true"
+    echo "${RSS}MB | $ICON_PARAM bash='touch $COMMAND_DIR/toggle_listening.cmd' terminal=false refresh=true"
 else
     # Not running: click will start FRIDAY silently in background
-    echo "${RSS}MB $ICON_PART bash='cd $FRIDAY_DIR && source .venv/bin/activate && nohup $VENV_PYTHON -m src.core >/dev/null 2>&1 &' terminal=false refresh=true"
+    echo "${RSS}MB | $ICON_PARAM bash='cd $FRIDAY_DIR && source .venv/bin/activate && nohup $VENV_PYTHON -m src.core >/dev/null 2>&1 &' terminal=false refresh=true"
 fi
 echo "---"
 
