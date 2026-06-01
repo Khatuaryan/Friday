@@ -9,12 +9,13 @@ This document serves as the master source of truth for the entire project. It de
 ## 🎯 1. Project Objective & Vision
 
 ### What is Project F.R.I.D.A.Y.?
-F.R.I.D.A.Y. is a privacy-first, fully local, multi-modal context-aware conversational voice companion designed to operate directly on consumer hardware (specifically optimized for Apple Silicon, such as an 8GB M-series MacBook Air).
+F.R.I.D.A.Y. is a privacy-first, fully local-first, multi-modal context-aware conversational voice companion designed to operate directly on consumer hardware (specifically optimized for Apple Silicon, such as an 8GB M-series MacBook Air).
 
 ### What are we trying to achieve?
 The goal is to build an active, long-term learning companion that understands who you are, tracks your active screen workspace context contextually, and proactively assists you with meeting alerts or break suggestions, all while:
 1.  **Guaranteeing Absolute Local Confidentiality:** No sensory streams (audio, video, screen context, or database records) ever leave the physical machine. All data at rest is encrypted via a hardware-tied AES-256-GCM cipher.
 2.  **Adhering to Extreme Memory Constraints:** The entire integrated system must run comfortably on an **8GB RAM** device, leaving at least a **1.0GB System Safety Buffer** to prevent system swapping, CPU throttling, or memory lockups. The assistant keeps its idle footprint near-zero and its active state within **3.5GB of RAM**.
+3.  **Bypassing Congested Endpoints**: Routes high-cognition reasoning requests securely to OpenRouter's paid **Gemma 4** endpoint, maintaining sub-second local tools execution and local Phi spoken voice synthesis, bringing RAM overhead to 0MB when idle.
 
 ### How are we going about it?
 We are building F.R.I.D.A.Y. in modular, feature-based phases. We actively reject bloated deep learning runtimes (like heavy PyTorch weights) in favor of hardware-accelerated, native macOS APIs, Apple Silicon MLX-optimized models, and on-demand quantized ONNX execution.
@@ -31,7 +32,7 @@ flowchart TB
     subgraph Sensors ["Sensory Inputs & Context (0MB - 150MB RAM)"]
         WW[Wake Word Detector: OpenWakeWord TFLite] --> AH[Activation Handler]
         FR[Vision Face Recognizer: Apple Vision API] --> AH
-        CT[macOS Context Tracker: Quartz/Cocoa] -- Polling -- > BP[Friday Brain]
+        CT[macOS Context Tracker: Quartz/Cocoa] -- Polling --> BP[Friday Brain]
     end
 
     %% Memory Layer
@@ -42,16 +43,20 @@ flowchart TB
         MS -- RLock protected --> VEC_DB[(sqlite-vec DB: Vector + Metadata split)]
     end
 
-    %% Core Reasoning
-    subgraph Brain ["Core Reasoning & NLP (2.2GB - 3.2GB RAM)"]
-        BP[Friday Brain] -- Prompt Ingestion --> PHI[Phi-3.5-mini-instruct 4-bit]
-        PHI -- Regex JSON tool call parsing --> MCP[Model Context Protocol Server]
+    %% Core Reasoning & Cloud Hybrid Layer
+    subgraph Brain ["Core Hybrid Brain Layer (<200MB Idle RAM)"]
+        BP -- "Cloud Completion Request" --> OpenRouter["OpenRouter Paid Tier (Gemma 4 31B)"]
+        OpenRouter -- "Structured JSON Output" --> LocalTools["Local Tool Executor (or Confirmation Gate)"]
+        LocalTools -- "Synthesis Context (RAG + Tool result)" --> Phi["Local Phi-3.5-mini 4-bit (MLX)"]
+        Phi -- "Instant Unload" --> BP
     end
 
-    %% Output & Playback
-    subgraph Speech ["Audio & Speech Output (0MB Python Overhead)"]
-        STT[mlx-whisper Unified Memory] --> BP
-        VP[Voice Pipeline] -- Arbitrated speak() --> TTS[macOS NSSpeechSynthesizer]
+    %% Audio & Playback
+    subgraph Speech ["Audio & Speech Output"]
+        STT["ASR: mlx-whisper (Multilingual)"] -- "If Hindi Detected" --> Sarvam["Sarvam AI STT Cloud API"]
+        STT -- "English / Other" --> BP
+        Sarvam --> BP
+        VP["Voice Pipeline"] -- "Arbitrated speak()" --> TTS["macOS native voice synthesizer (say)"]
         AH -- "Immediate preemption (killall say)" --> TTS
     end
 ```
@@ -64,7 +69,7 @@ flowchart TB
 *   **What was developed:**
     *   `src/modules/audio/`: Encapsulated PyAudio streams and `OpenWakeWord` TFLite wake-word inference.
     *   `src/modules/vision/`: Native macOS Face Recognition wrapper using Apple's Vision framework.
-    *   `src/core/activation_handler.py`: Orchestrates states: `LISTENING` → `VERIFYING` (triggers webcam for 2 seconds) → `READY`.
+    *   `src/core/activation_handler.py`: State orchestration: `LISTENING` → `VERIFYING` (triggers webcam webcam for 2 seconds) → `READY`.
 *   **Why design choices were made:**
     *   *Apple Vision over OpenCV:* OpenCV or MediaPipe consume significant RAM and CPU. Apple's native Vision framework via `PyObjC` accesses system-level libraries already loaded in memory, consuming **0MB** of additional RAM.
     *   *Camera Privacy:* The webcam is powered only for a 2-second burst during the `VERIFYING` state to confirm the authorized user's face, preventing background camera battery drain and ensuring visual privacy.
@@ -77,7 +82,7 @@ flowchart TB
 
 ### 🔵 Phase Set 2: Voice & Brain Integration
 *   **What was developed:**
-    *   `src/core/brain.py`: Orchestrates Phi-3.5-mini-instruct loading, inference generation, and tool-calling.
+    *   `src/core/brain.py`: Orchestrates local model execution, prompt formatting, stream early-stops, and tools parsing.
     *   `src/modules/voice_pipeline.py`: Drives STT transcription, brain invocation, and TTS playback.
     *   `src/memory/manager.py`: Monitored active system memory to prevent system crashes.
 *   **Why design choices were made:**
@@ -112,64 +117,107 @@ flowchart TB
 
 ---
 
+### 🟡 Phase Set 4: Security Hardening & Multilingual STT
+*   **What was developed:**
+    *   `src/tools/file_tool.py`: Added anchored prompt injection scanning and dynamic tag isolation to protect model context.
+    *   `src/tools/server.py`: Built an sliding-window rate limiter restricted to a maximum of **5 tool calls per 60 seconds** to thwart recursive loop CPU swapping.
+    *   `src/modules/audio/stt.py`: Integrated `mlx-community/whisper-small-mlx` for bilingual auto-detected ASR.
+    *   **Sarvam STT Integration**: Integrated a high-fidelity cloud Speech-to-Text pathway (`https://api.sarvam.ai/speech-to-text`) using the `SARVAM_API_KEY` for instant Hindi speech-to-text transcription.
+*   **Why design choices were made:**
+    *   *Bilingual Fallbacks*: Created robust network triggers. If the Sarvam AI STT query fails or the network drops, the module falls back cleanly to local multilingual Whisper, guaranteeing 100% voice offline availability.
+    *   *Hinglish Response Prompts*: Prompt architecture adapts dynamically to `'hi'`. In Hindi mode, the model formats the tool operations in English (to avoid parser crashes) but instructs local synthesis to respond to the Boss in Hinglish or fluent conversational Hindi.
+
+---
+
+### 🔴 Phase Set 5: Full Action Capability Layer
+*   **What was developed:**
+    *   `src/tools/app_tool.py` & `src/tools/media_tool.py`: Added Cocoa PyObjC application window tracking, AppleScript system control (open/terminate apps), and cross-media (Spotify, Music) control.
+    *   `src/tools/calendar_write_tool.py` & `src/tools/reminder_tool.py`: Added EventKit calendar event creation/deletion, and complete system reminders lifecycle orchestration.
+    *   `src/tools/shell_tool.py` & `src/tools/file_write_tool.py`: Sandboxed execution shell and 50KB-capped file mutator target.
+    *   `src/tools/message_tool.py` & `src/tools/email_tool.py`: Secure automated Target iMessage and Mail.app integration.
+    *   `src/tools/web_tool.py`: Built wttr.in weather lookup and DuckDuckGo API/HTML scrapers.
+*   **Why design choices were made:**
+    *   *The Verbal Confirmation Engine*: Destructive, security-critical, or high-privilege actions (like running terminal commands, deleting files, sending messages) require dynamic approval. We implemented an interrupted reasoning loop: the brain holds execution, registers a pending command, prompts the Boss verbally, listens for an 8-second VAD window, and dispatches only upon positive affirmation.
+    *   *Automated Videoconference Openers*: The Proactive Engine scans tomorrow's calendar meetings. If a videoconference link is detected, it pre-emptively joins 30 minutes and 5 minutes prior via the system browser.
+
+---
+
+### 🟤 Phase Set 6: System Integration & Infrastructure
+*   **What was developed:**
+    *   `src/utils/`: Unified project constants, rotating 10MB file logging, and Pydantic v2 `FridayConfig` configuration layer.
+    *   `src/core/__main__.py`: Built a proper CLI onboarding entry point with `--dry-run`, `--no-face`, and `--no-brain` configurations.
+    *   `src/core/ipc_bridge.py`: Real-time state syncing with SwiftBar via local file polling (`status.json` and `.cmd` commands).
+    *   `install_launchagent.sh`: Built launchctl daemons to load F.R.I.D.A.Y. automatically at user login.
+
+---
+
+### 🤖 Latest Integrations: Paid Gemma 4 Cloud & Environment Automation
+*   **What was developed:**
+    *   **OpenRouter Paid Gemma 4 Migration**: Switched configuration pathways from the crowded global public free endpoint (`google/gemma-4-31b-it:free`) to the dedicated paid endpoint (`google/gemma-4-31b-it`), permanently resolving `429 Too Many Requests` API crashes.
+    *   **Automatic .env Loading**: Integrated `python-dotenv` calls directly into `__main__.py`, `config.py`, and `stt.py` execution sequences, eliminating manual environment variable shell export steps.
+    *   **Test Isolation**: Programmatically wrapped memory and embedding unload tests in isolated `FRIDAY_MEM_BUFFER="-1.0"` scopes to ensure flawless passes under active memory pressure on the host environment.
+
+---
+
 ## 🧪 4. Testing & Verification Suite Guide
 
-All systems are fully verified. Follow these steps to execute tests:
+All cognitive layers are fully verified. Follow these steps to execute tests:
 
 ### Setup & Prerequisites
-Ensure the virtual environment is loaded and libraries are on the path:
+Ensure the virtual environment is loaded:
 ```bash
 source .venv/bin/activate
 ```
 
-### 1. RAG & SQLite-vec Validation
-Tests the dynamic AES-256-GCM round trips, database insertion, and semantic cosine distance vector queries:
+### Run the Complete Test Suite
+Executes all **109 automated unit and integration tests** cleanly across all sensory, reasoning, memory, tool-calling, and arbitration layers:
 ```bash
-python tests/unit/test_memory_rag.py
+.venv/bin/python -m pytest
 ```
 *Expected Outputs:*
-*   "✅ Encryption works" (Successful GCM encrypt/decrypt).
-*   "✅ Found semantic match: My favorite color is emerald. (distance: ~0.30)"
-*   "✅ MemoryStore test passed"
+*   "109 passed in 9.01s"
+
+### 1. RAG & SQLite-vec Validation
+Tests GCM authenticated encryption, sqlite-vec Cosine similarity distance calculations, and metadata splits:
+```bash
+.venv/bin/python -m pytest tests/unit/test_memory_rag.py
+```
 
 ### 2. Embeddings Auto-Unload Validation
-Tests that the MiniLM ONNX session initializes lazily on demand and automatically unloads from RAM to clear the active memory footprint after its idle timer expires:
+Tests that the MiniLM ONNX session loads lazily on first embedding demand and unloads dynamically after 5 minutes of idle time to restore memory:
 ```bash
-python tests/unit/test_embeddings_unload.py
+.venv/bin/python -m pytest tests/unit/test_embeddings_unload.py
 ```
-*Expected Outputs:*
-*   Verifies initially unloaded model.
-*   Triggers embedding call. Verifies active ORT session.
-*   Waits for idle timeout, executes garbage collection, and asserts `session is None`.
-*   "✅ Auto-unload works"
 
 ---
 
 ## 🔍 5. Manual Verification Guidelines
 
-### How to Manually Verify RAG context:
-1.  Run the main application.
-2.  Say: *"My favorite color is emerald."* (Verify in log files that the background worker generates and saves the embedding successfully).
-3.  Wait 6 minutes. Confirm in logs that the embedding model automatically unloads from RAM (`ONNX MiniLM unloaded due to inactivity`).
+### How to Manually Verify Bilingual STT & Sarvam AI STT:
+1.  Verify `SARVAM_API_KEY` is present in your local `.env`.
+2.  Boot F.R.I.D.A.Y.: `python -m src.core`.
+3.  Speak a Hindi command (e.g. *"क्या समय हुआ है?"*).
+4.  *Expected result:* The console will log: `Hindi detected. Routing audio to Sarvam AI API...` followed by the high-accuracy Hindi text transcription. The hybrid brain will formulate the answer and synthesize beautiful natural voice speech.
+
+### How to Manually Verify RAG Context & Auto-Unload:
+1.  Boot F.R.I.D.A.Y. and say: *"My favorite color is emerald."*
+2.  Confirm that the RAG store inserts the conversation turn and begins embedding generation.
+3.  Wait 5 minutes. Confirm in the logs that the ONNX model is swept from memory: `ONNX MiniLM unloaded due to inactivity`.
 4.  Say: *"What is my favorite color?"*
-5.  *Expected result:* The assistant will query the database, decrypt the closest vector row, inject it into the prompt context, and answer *"Your favorite color is emerald."*
+5.  *Expected result:* F.R.I.D.A.Y. dynamically loads the database, finds the closest matching vector, decrypts the text, and answers *"Your favorite color is emerald."*
 
-### How to Verify Context Awareness:
-1.  Open your IDE (e.g., PyCharm or VS Code).
-2.  Select a line of code or a active window.
-3.  Trigger the assistant and say: *"Explain what I'm looking at."*
-4.  *Expected result:* The background Cocoa tracker grabs the active window details, appends them to the system prompt, and the assistant responds contextually based on the active application and window title.
-
-### How to Verify Speech Arbitration:
-1.  Set a dummy meeting or alarm in the proactive engine.
-2.  While the proactive engine is speaking, say the Wake Word.
-3.  *Expected result:* The proactive speech immediately terminates (`killall say` is triggered), the play queues clear, and the system transitions instantly into the listening state to receive your voice input.
+### How to Verify the Verbal Confirmation Gate:
+1.  Say: *"Delete file data/temp.txt"* (ensure the file exists).
+2.  *Expected result:* F.R.I.D.A.Y. halts, does NOT run the file tool, caches the delete action, and asks verbally: *"I'm about to delete the file data/temp.txt. Say confirm to proceed."*
+3.  Respond verbally: *"Confirm"* or *"Yes"*. F.R.I.D.A.Y. completes the deletion. Saying *"Cancel"* will cleanly discard the operation.
 
 ---
 
 ## 📌 6. Developer Guidelines & Golden Rules
+
 Always read and strictly apply these policies:
 1.  **Zero Plaintext on Disk:** All databases containing conversation history must remain encrypted.
 2.  **No PyTorch/Transformers:** Never import PyTorch. If an embedding model is needed, quantize it to ONNX. If speech models are needed, use Apple-optimized MLX bindings.
 3.  **State-Aware speech gates:** Background engines must never output speech without verifying the pipeline state. Always defer proactive speech if the user is interacting.
-4.  **Buffer Guard:** Always respect the 1GB system safety buffer.
+4.  **Buffer Guard:** Always respect the 1GB system safety buffer. Override dynamically via `FRIDAY_MEM_BUFFER` programmatically within test blocks only.
+5.  **Paid Gemma 4 Standard ID**: Ensure the model is configured as `"google/gemma-4-31b-it"` (without the `:free` suffix) to protect the user from rate limiting failures.

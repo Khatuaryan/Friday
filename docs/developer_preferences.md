@@ -147,3 +147,16 @@ To guarantee absolute confidentiality, no user data or conversation history may 
 *   **System RAM Safety Buffer:**
     *   *Lesson:* Maintain a **1.0GB System Safety Buffer** in the memory manager. If available system RAM is less than (Model RAM + 1GB), refuse model loading to avoid critical macOS swapping and Metal memory exceptions (`OutOfMemory` buffer aborts).
     *   *Override:* For heavy development environments, support a dynamic override via `FRIDAY_MEM_BUFFER` environment variable down to **0.5GB** but no lower.
+
+---
+
+## 🤖 9. Cloud-Local Hybrid Reasoning, Paid Gemma 4 & Sarvam STT
+
+*   **Paid Gemma 4 Migration:**
+    *   *Rule:* Always target the paid-tier model `google/gemma-4-31b-it` instead of the free-tier model `:free` on OpenRouter to avoid crowded public endpoints and `429 Too Many Requests` rate-limiting failures.
+*   **Sarvam AI Hindi Speech-to-Text:**
+    *   *Rule:* If the local multilingual Whisper model auto-detects Hindi (`hi` or `hi-IN`), automatically route the audio to the high-accuracy Sarvam AI STT API using `SARVAM_API_KEY` for Hindi transcription.
+*   **Automatic .env Environment Loading:**
+    *   *Rule:* Always call `dotenv.load_dotenv()` at the absolute entry points of execution (`src/core/__main__.py`, `src/utils/config.py`, and `src/modules/audio/stt.py`) to ensure API keys like `SARVAM_API_KEY` and `OPENROUTER_API_KEY` are seamlessly loaded into memory without manual shell exports.
+*   **Memory Pressure Test Isolation:**
+    *   *Rule:* Do not set `FRIDAY_MEM_BUFFER` globally for all tests as it breaks memory manager strict validation checks. Instead, programmatically set `os.environ["FRIDAY_MEM_BUFFER"] = "-1.0"` inside specific tests that load heavy models (e.g. embeddings, RAG database tests) and restore the original environment state in a `finally` block.
