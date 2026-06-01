@@ -1,4 +1,4 @@
-# F.R.I.D.A.Y. v2 — 8GB-Optimized macOS AI Assistant
+# F.R.I.D.A.Y. — 8GB-Optimized macOS AI Assistant
 
 <p align="center">
   <img src="https://img.shields.io/badge/OS-macOS%2013%2B-blue?logo=apple" alt="macOS Version">
@@ -7,7 +7,13 @@
   <img src="https://img.shields.io/badge/License-Private-red" alt="License">
 </p>
 
-F.R.I.D.A.Y. v2 is a **privacy-first, local-only voice AI assistant** for macOS, custom-engineered to run within a strict **3.5 GB RAM budget** on 8GB Apple Silicon (M1/M2/M3) systems. By utilizing quantized model runtimes, native OS-level services, and hardware-accelerated frameworks, F.R.I.D.A.Y. delivers sub-second wake word detection, FaceTime-based facial biometric confirmation, local semantic memory, and a comprehensive macOS integration tool suite.
+## 📖 What is F.R.I.D.A.Y.?
+
+F.R.I.D.A.Y. (Functional Intelligent Assistant System) is a local, privacy-first desktop voice agent designed specifically for Apple Silicon M-series Macs running macOS. 
+
+Unlike cloud-based assistants (which leak private audio data and require constant internet connectivity) or standard desktop LLM wrappers (which suffer from high memory footprints and lack physical system control), F.R.I.D.A.Y. operates as a fully on-device voice companion. It is engineered with a strict **3.5 GB RAM budget** to run comfortably on standard 8GB RAM laptops (such as the MacBook Air) without causing system lag or SSD memory swapping. 
+
+Through an integrated Model Context Protocol (MCP) tool server, the assistant acts autonomously to manage calendar schedules, check battery and storage status, interact with the clipboard, open/close software applications, control media playback, draft emails, check real-world weather, and query local sandboxed files—all triggered by a simple wake word (`Hey Mycroft`) and FaceTime HD Camera biometric facial validation.
 
 ---
 
@@ -18,7 +24,17 @@ F.R.I.D.A.Y. v2 is a **privacy-first, local-only voice AI assistant** for macOS,
 *   **Zero-Plaintext Encrypted RAG**: Implements local vector semantic memory using **`sqlite-vec`** over an encrypted SQLite database. Plaintext conversations are protected with **AES-256-GCM authenticated encryption** using a cryptographic key dynamically derived from the macOS hardware Platform UUID.
 *   **Robust System & App Integration**: Integrates directly with macOS applications and system resources via an advanced **MCP (Model Context Protocol) Tool Server**.
 *   **State-Aware TTS Arbitration**: Uses native macOS `NSSpeechSynthesizer` (`say` utility) with instant, zero-lag preemption. If the wake word is detected while speaking, background TTS processes are instantly terminated (`killall say`), audio queues are flushed, and control is returned to user voice capture.
-*   **Dynamic Memory Protection**: Active RAM guard dynamically bypasses memory safety checks on constrained 8GB systems and scales down context windows or skips vector database searches when system memory utilization spikes over 85%.
+*   **Dynamic Memory Protection**: Active RAM guard dynamically bypasses memory safety checks on constrained 8GB systems and scales down context window lengths or skips vector database searches when system memory utilization spikes over 85%.
+
+---
+
+## ⚠️ System Limitations
+
+*   **Reasoning Depth & Tool Chaining**: F.R.I.D.A.Y. is powered by a **3.8 Billion parameter model (Phi-3.5-mini)**. While it is highly capable at single, direct tool executions (e.g., *"What is my battery level?"*, *"Open Safari"*, *"What is the weather in Mumbai?"*), it will perform unreliably if requested to execute complex, multi-hop reasoning chains or pass the output of one tool dynamically into another.
+*   **Memory-Driven Degraded Mode**: Under extreme RAM pressure (total system memory utilization $> 85\%$, such as when transcribing long sentences with local Whisper active), the RAG semantic memory is bypassed dynamically to prevent system swapping or OOM crashes.
+*   **Single-Boss Landmark Enrollment**: The biometric face-verification subsystem is mathematically optimized as a 1-to-1 verification check to identify a single "Boss". Multi-user enrollment and fast user-switching are not supported.
+*   **macOS API Dependency**: F.R.I.D.A.Y. relies strictly on native macOS system APIs, binaries, and AppleScript interfaces (`say`, `screencapture`, `AppKit`, `EventKit`). It is strictly incompatible with Windows or Linux environments.
+*   **Acoustic VAD Silence Tuning**: Local speech capture operates on a voice activity detection (VAD) silence threshold (1.5 seconds). Highly noisy or low-volume microphone feeds can occasionally trigger premature stop-recording events.
 
 ---
 
