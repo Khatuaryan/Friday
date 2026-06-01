@@ -12,7 +12,7 @@ Speed:  <800 ms per verification
 
 from __future__ import annotations
 
-import logging
+from src.utils.logger import get_logger
 import pickle
 import time
 from pathlib import Path
@@ -20,7 +20,7 @@ from typing import Optional, Tuple
 
 import numpy as np
 
-logger = logging.getLogger("friday.face_vision")
+logger = get_logger("friday.face_vision")
 
 
 class VisionFaceRecognizer:

@@ -1,10 +1,10 @@
 import os
 import subprocess
-import logging
+from src.utils.logger import get_logger
 from pathlib import Path
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-logger = logging.getLogger("friday.memory_encryption")
+logger = get_logger("friday.memory_encryption")
 
 class MemoryEncryption:
     """

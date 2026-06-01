@@ -13,7 +13,7 @@ Thresholds:
 
 from __future__ import annotations
 
-import logging
+from src.utils.logger import get_logger
 import os
 import threading
 import time
@@ -25,7 +25,7 @@ from typing import Callable
 import psutil
 import yaml
 
-logger = logging.getLogger("friday.memory_manager")
+logger = get_logger("friday.memory_manager")
 
 
 class PressureLevel(str, Enum):

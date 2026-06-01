@@ -10,12 +10,12 @@ Piper TTS can be added later as an upgrade (separate PR).
 
 from __future__ import annotations
 
-import logging
+from src.utils.logger import get_logger
 import queue
 import subprocess
 import threading
 
-logger = logging.getLogger("friday.tts")
+logger = get_logger("friday.tts")
 
 
 class TextToSpeech:

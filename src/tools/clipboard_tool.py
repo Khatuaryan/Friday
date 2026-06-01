@@ -4,13 +4,13 @@ Clipboard Tool — Read and write system clipboard contents using native pbcopy/
 
 from __future__ import annotations
 
-import logging
+from src.utils.logger import get_logger
 import subprocess
 from typing import Any, Dict
 
 from .base import Tool
 
-logger = logging.getLogger("friday.tools.clipboard")
+logger = get_logger("friday.tools.clipboard")
 
 
 class ClipboardTool(Tool):

@@ -6,14 +6,14 @@ Provides: battery, storage, memory, network status via psutil.
 
 from __future__ import annotations
 
-import logging
+from src.utils.logger import get_logger
 from typing import Any, Dict
 
 import psutil
 
 from .base import Tool
 
-logger = logging.getLogger("friday.tools.system")
+logger = get_logger("friday.tools.system")
 
 
 class SystemTool(Tool):

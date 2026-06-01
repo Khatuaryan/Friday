@@ -11,7 +11,7 @@ Latency: <200 ms from word end to callback
 
 from __future__ import annotations
 
-import logging
+from src.utils.logger import get_logger
 import queue
 import threading
 import time
@@ -19,7 +19,7 @@ from typing import Callable, Optional
 
 import numpy as np
 
-logger = logging.getLogger("friday.wake_word")
+logger = get_logger("friday.wake_word")
 
 # Audio constants
 SAMPLE_RATE = 16000

@@ -1,11 +1,11 @@
 import time
-import logging
+from src.utils.logger import get_logger
 import threading
 from typing import Dict, Any, List, Optional
 import AppKit
 import Quartz
 
-logger = logging.getLogger("friday.context_tracker")
+logger = get_logger("friday.context_tracker")
 
 class ContextTracker:
     """

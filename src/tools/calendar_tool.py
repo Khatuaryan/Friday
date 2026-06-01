@@ -7,14 +7,14 @@ to block until the OS permission dialog resolves.
 
 from __future__ import annotations
 
-import logging
+from src.utils.logger import get_logger
 import threading
 from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
 from .base import Tool
 
-logger = logging.getLogger("friday.tools.calendar")
+logger = get_logger("friday.tools.calendar")
 
 
 class CalendarTool(Tool):

@@ -12,7 +12,7 @@ Latency: <2s for 5-second audio clip
 
 from __future__ import annotations
 
-import logging
+from src.utils.logger import get_logger
 import queue
 import threading
 import time
@@ -22,7 +22,7 @@ from typing import Optional, Tuple
 
 import numpy as np
 
-logger = logging.getLogger("friday.stt")
+logger = get_logger("friday.stt")
 
 # Audio constants — must match wake_word.py
 SAMPLE_RATE = 16000

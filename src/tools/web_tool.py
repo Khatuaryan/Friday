@@ -4,7 +4,7 @@ Web Search & Weather Tools — Interfaces with DuckDuckGo for searches and wttr.
 
 from __future__ import annotations
 
-import logging
+from src.utils.logger import get_logger
 import re
 from typing import Any, Dict, List
 from urllib.parse import unquote
@@ -13,7 +13,7 @@ import httpx
 
 from .base import Tool
 
-logger = logging.getLogger("friday.tools.web")
+logger = get_logger("friday.tools.web")
 
 
 class WebSearchTool(Tool):

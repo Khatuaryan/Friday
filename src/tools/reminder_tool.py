@@ -4,14 +4,14 @@ Reminders Tool — Create, list, and complete macOS Reminders via EventKit.
 
 from __future__ import annotations
 
-import logging
+from src.utils.logger import get_logger
 import threading
 from datetime import datetime
 from typing import Any, Dict
 
 from .base import Tool
 
-logger = logging.getLogger("friday.tools.reminder")
+logger = get_logger("friday.tools.reminder")
 
 
 class ReminderTool(Tool):

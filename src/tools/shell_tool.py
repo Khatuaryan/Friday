@@ -4,14 +4,14 @@ Shell Tool — Secure sandboxed shell command execution with forced verbal confi
 
 from __future__ import annotations
 
-import logging
+from src.utils.logger import get_logger
 import shlex
 import subprocess
 from typing import Any, Dict
 
 from .base import Tool
 
-logger = logging.getLogger("friday.tools.shell")
+logger = get_logger("friday.tools.shell")
 
 
 class ShellTool(Tool):

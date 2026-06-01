@@ -4,13 +4,13 @@ Media Control Tool — Control system volume and music applications (Music/Spoti
 
 from __future__ import annotations
 
-import logging
+from src.utils.logger import get_logger
 import subprocess
 from typing import Any, Dict
 
 from .base import Tool
 
-logger = logging.getLogger("friday.tools.media")
+logger = get_logger("friday.tools.media")
 
 
 class MediaControlTool(Tool):

@@ -4,13 +4,13 @@ Email Tool — Draft and send emails via native macOS Mail.app with confirmation
 
 from __future__ import annotations
 
-import logging
+from src.utils.logger import get_logger
 import subprocess
 from typing import Any, Dict
 
 from .base import Tool
 
-logger = logging.getLogger("friday.tools.email")
+logger = get_logger("friday.tools.email")
 
 
 class EmailTool(Tool):

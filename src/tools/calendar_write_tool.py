@@ -4,14 +4,14 @@ Calendar Write Tool — Create and delete events in macOS Calendar via EventKit.
 
 from __future__ import annotations
 
-import logging
+from src.utils.logger import get_logger
 import threading
 from datetime import datetime, timedelta
 from typing import Any, Dict
 
 from .base import Tool
 
-logger = logging.getLogger("friday.tools.calendar_write")
+logger = get_logger("friday.tools.calendar_write")
 
 
 class CalendarWriteTool(Tool):

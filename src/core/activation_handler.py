@@ -1,11 +1,11 @@
-import logging
+from src.utils.logger import get_logger
 import threading
 import time
 import queue
 from enum import Enum
 from typing import Callable, Optional
 
-logger = logging.getLogger("friday.activation")
+logger = get_logger("friday.activation")
 
 class ActivationState(str, Enum):
     """Activation pipeline states."""
@@ -29,12 +29,16 @@ class ActivationHandler:
         on_stranger: Optional[Callable[[], None]] = None,
         on_no_face: Optional[Callable[[], None]] = None,
         camera_index: Optional[int] = None,
+        skip_face_verification: bool = False,
+        load_brain: bool = True,
     ) -> None:
         self.boss_encodings_path = boss_encodings_path
         self.on_boss_verified = on_boss_verified
         self.on_stranger = on_stranger
         self.on_no_face = on_no_face
         self.camera_index = camera_index
+        self.skip_face_verification = skip_face_verification
+        self.load_brain = load_brain
 
         self._state = ActivationState.IDLE
         self._lock = threading.Lock()
@@ -47,6 +51,7 @@ class ActivationHandler:
         self._stt = None
         self._tts = None
         self._voice_pipeline = None
+        self.ipc_bridge = None
 
     @property
     def state(self) -> ActivationState:
@@ -61,12 +66,15 @@ class ActivationHandler:
         from src.modules.audio.wake_word import WakeWordDetector
         self._wake_word = WakeWordDetector(callback=self._queue_wake_word)
 
-        # Initialize face recognizer
-        from src.modules.vision.face_recognizer import VisionFaceRecognizer
-        self._face_recognizer = VisionFaceRecognizer(
-            boss_encodings_path=self.boss_encodings_path,
-            camera_index=self.camera_index,
-        )
+        # Initialize face recognizer (skip if configured)
+        if not self.skip_face_verification:
+            from src.modules.vision.face_recognizer import VisionFaceRecognizer
+            self._face_recognizer = VisionFaceRecognizer(
+                boss_encodings_path=self.boss_encodings_path,
+                camera_index=self.camera_index,
+            )
+        else:
+            logger.info("Face verification disabled — skipping recognizer init")
 
         # Initialize voice pipeline
         from src.modules.audio.stt import SpeechToText
@@ -77,13 +85,16 @@ class ActivationHandler:
         self._tts = TextToSpeech()
 
         brain = None
-        try:
-            from src.core.brain import FridayBrain
-            brain = FridayBrain()
-            brain.load_model()
-            logger.info("Brain loaded — full voice interaction ready")
-        except Exception as e:
-            logger.warning("Brain not available: %s", e)
+        if self.load_brain:
+            try:
+                from src.core.brain import FridayBrain
+                brain = FridayBrain()
+                brain.load_model()
+                logger.info("Brain loaded — full voice interaction ready")
+            except Exception as e:
+                logger.warning("Brain not available: %s", e)
+        else:
+            logger.info("Brain loading disabled via --no-brain flag")
 
         self._voice_pipeline = VoicePipeline(stt=self._stt, tts=self._tts, brain=brain)
         
@@ -98,6 +109,12 @@ class ActivationHandler:
         
         self._running = True
         self._wake_word.start()
+
+        # Initialize IPC bridge for menu bar communication
+        from src.core.ipc_bridge import IPCBridge
+        self.ipc_bridge = IPCBridge(activation_handler=self)
+        self.ipc_bridge.start()
+
         self._set_state(ActivationState.LISTENING)
         logger.info("Activation handler started — listening for wake word")
 
@@ -126,6 +143,8 @@ class ActivationHandler:
             self._wake_word.stop()
         if self._tts:
             self._tts.stop()
+        if self.ipc_bridge:
+            self.ipc_bridge.stop()
         self._set_state(ActivationState.IDLE)
         logger.info("Activation handler stopped")
 
@@ -159,6 +178,14 @@ class ActivationHandler:
         
         # Show a notification for visual feedback
         self._show_notification("F.R.I.D.A.Y.", "Wake word detected. Verifying identity...")
+
+        # If face verification is disabled, skip straight to READY
+        if self.skip_face_verification:
+            logger.info("✅ Face verification skipped — proceeding as boss")
+            self._set_state(ActivationState.READY)
+            threading.Thread(target=self.on_boss_verified, daemon=True).start()
+            self._handle_voice_interaction()
+            return
         
         start = time.perf_counter()
         try:
@@ -225,10 +252,12 @@ class ActivationHandler:
         os.system(f"osascript -e 'display notification \"{message}\" with title \"{title}\"'")
 
     def _set_state(self, new_state: ActivationState) -> None:
-        """Update state with logging."""
+        """Update state with logging and IPC bridge notification."""
         old = self._state
         self._state = new_state
         if old != new_state:
             logger.debug("State: %s → %s", old.value, new_state.value)
+            if self.ipc_bridge:
+                self.ipc_bridge.write_status(new_state.value)
 
 

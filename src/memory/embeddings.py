@@ -1,11 +1,11 @@
-import logging
+from src.utils.logger import get_logger
 import threading
 import time
 import gc
 from pathlib import Path
 import numpy as np
 
-logger = logging.getLogger("friday.memory_embeddings")
+logger = get_logger("friday.memory_embeddings")
 
 class EmbeddingModel:
     """

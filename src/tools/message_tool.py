@@ -4,13 +4,13 @@ Message Tool — Send iMessages via macOS Messages App automation with forced ve
 
 from __future__ import annotations
 
-import logging
+from src.utils.logger import get_logger
 import subprocess
 from typing import Any, Dict
 
 from .base import Tool
 
-logger = logging.getLogger("friday.tools.message")
+logger = get_logger("friday.tools.message")
 
 
 class MessageTool(Tool):

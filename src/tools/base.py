@@ -7,11 +7,11 @@ All tools inherit from Tool and implement name, description, and execute().
 
 from __future__ import annotations
 
-import logging
+from src.utils.logger import get_logger
 from abc import ABC, abstractmethod
 from typing import Any, Dict
 
-logger = logging.getLogger("friday.tools")
+logger = get_logger("friday.tools")
 
 
 class Tool(ABC):

@@ -11,13 +11,13 @@ Flow:
 
 from __future__ import annotations
 
-import logging
+from src.utils.logger import get_logger
 from typing import Optional
 
 from src.modules.audio.stt import SpeechToText
 from src.modules.audio.tts import TextToSpeech
 
-logger = logging.getLogger("friday.voice_pipeline")
+logger = get_logger("friday.voice_pipeline")
 
 
 class VoicePipeline:

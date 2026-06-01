@@ -4,7 +4,7 @@ File Write Tool — Support write, append, directory creation, moving, and delet
 
 from __future__ import annotations
 
-import logging
+from src.utils.logger import get_logger
 import os
 import shutil
 from pathlib import Path
@@ -12,7 +12,7 @@ from typing import Any, Dict
 
 from .base import Tool
 
-logger = logging.getLogger("friday.tools.file_write")
+logger = get_logger("friday.tools.file_write")
 
 
 class FileWriteTool(Tool):

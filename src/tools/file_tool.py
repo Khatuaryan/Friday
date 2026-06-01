@@ -6,14 +6,14 @@ Safety: Only ~/Documents, ~/Desktop, ~/Downloads, and project root.
 
 from __future__ import annotations
 
-import logging
+from src.utils.logger import get_logger
 import re
 from pathlib import Path
 from typing import Any, Dict, Tuple
 
 from .base import Tool
 
-logger = logging.getLogger("friday.tools.file")
+logger = get_logger("friday.tools.file")
 
 # Project root for sandbox inclusion
 _PROJECT_ROOT = Path(__file__).parent.parent.parent

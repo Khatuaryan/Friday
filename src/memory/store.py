@@ -2,12 +2,12 @@ import sqlite3
 import threading
 import json
 import time
-import logging
+from src.utils.logger import get_logger
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 import numpy as np
 
-logger = logging.getLogger("friday.memory_store")
+logger = get_logger("friday.memory_store")
 
 class MemoryStore:
     """

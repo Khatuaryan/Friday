@@ -1,25 +1,43 @@
-.PHONY: install verify-env benchmark-memory monitor test test-wake-word test-face test-stt test-tts test-voice-pipeline test-brain test-pipeline enroll-face download-model download-whisper clean help
+.PHONY: install verify-env benchmark-memory monitor test test-wake-word test-face test-stt test-tts test-voice-pipeline test-brain test-pipeline enroll-face download-model download-whisper run run-debug run-no-face dry-run install-agent uninstall-agent agent-status agent-logs clean help
 
 # Default target
 help:
 	@echo "F.R.I.D.A.Y. v2 — Available Commands"
-	@echo "────────────────────────────────────────"
-	@echo "  make install         Setup environment & install deps"
-	@echo "  make verify-env      Verify all components are working"
-	@echo "  make download-model  Download Phi-3.5-mini"
+	@echo "════════════════════════════════════════"
+	@echo ""
+	@echo " ── Run ──"
+	@echo "  make run               Start FRIDAY"
+	@echo "  make run-debug         Start with DEBUG logging"
+	@echo "  make run-no-face       Start without face verification"
+	@echo "  make dry-run           Validate config and environment"
+	@echo ""
+	@echo " ── LaunchAgent ──"
+	@echo "  make install-agent     Install auto-start LaunchAgent"
+	@echo "  make uninstall-agent   Remove LaunchAgent"
+	@echo "  make agent-status      Check LaunchAgent status"
+	@echo "  make agent-logs        Tail LaunchAgent stdout/stderr"
+	@echo ""
+	@echo " ── Setup ──"
+	@echo "  make install           Setup environment & install deps"
+	@echo "  make verify-env        Verify all components are working"
+	@echo "  make download-model    Download Phi-3.5-mini"
+	@echo "  make enroll-face       Enroll Boss face"
+	@echo "  make download-whisper  Download Distil-Whisper model"
+	@echo ""
+	@echo " ── Test ──"
+	@echo "  make test              Run all unit tests"
+	@echo "  make test-wake-word    Manual wake word test"
+	@echo "  make test-face         Manual face recognition test"
+	@echo "  make test-stt          Manual STT test"
+	@echo "  make test-tts          Manual TTS test"
+	@echo "  make test-voice-pipeline  Voice pipeline integration"
+	@echo "  make test-brain        Brain integration (requires model)"
+	@echo "  make test-pipeline     Integration (Wake Word + Face)"
+	@echo ""
+	@echo " ── Diagnostics ──"
 	@echo "  make benchmark-memory  Run RAM benchmark"
-	@echo "  make monitor         Live memory pressure monitor"
-	@echo "  make test            Run all tests"
-	@echo "  make test-wake-word  Manual wake word unit test"
-	@echo "  make test-face       Manual face recognition unit test"
-	@echo "  make test-stt         Manual STT unit test"
-	@echo "  make test-tts         Manual TTS unit test"
-	@echo "  make test-voice-pipeline  Voice pipeline integration test"
-	@echo "  make test-brain      Brain integration test (requires model)"
-	@echo "  make test-pipeline   Integration test (Wake Word + Face)"
-	@echo "  make enroll-face     Enroll Boss face (Setup)"
-	@echo "  make download-whisper Download Distil-Whisper model"
-	@echo "  make clean           Remove caches"
+	@echo "  make monitor           Live memory pressure monitor"
+	@echo "  make clean             Remove caches"
 
 install:
 	bash scripts/setup/install.sh
@@ -80,3 +98,33 @@ clean:
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
 	rm -rf .pytest_cache 2>/dev/null || true
 	@echo "✅ Cleaned"
+
+# ── Run Targets ────────────────────────────────────────────
+run:
+	.venv/bin/python -m src.core
+
+run-debug:
+	.venv/bin/python -m src.core --debug
+
+run-no-face:
+	.venv/bin/python -m src.core --no-face
+
+dry-run:
+	.venv/bin/python -m src.core --dry-run
+
+# ── LaunchAgent Targets ───────────────────────────────────
+install-agent:
+	bash scripts/setup/install_launchagent.sh
+
+uninstall-agent:
+	bash scripts/setup/uninstall_launchagent.sh
+
+agent-status:
+	@launchctl list 2>/dev/null | grep friday || echo "LaunchAgent not loaded"
+
+agent-logs:
+	@echo "=== stdout ==="
+	@tail -30 logs/friday.stdout.log 2>/dev/null || echo "No stdout log"
+	@echo ""
+	@echo "=== stderr ==="
+	@tail -30 logs/friday.stderr.log 2>/dev/null || echo "No stderr log"

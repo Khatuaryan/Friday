@@ -10,12 +10,12 @@ Latency: <500ms first token, <2s full response
 
 from __future__ import annotations
 
-import logging
+from src.utils.logger import get_logger
 import time
 from pathlib import Path
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
-logger = logging.getLogger("friday.brain")
+logger = get_logger("friday.brain")
 
 
 class FridayBrain:

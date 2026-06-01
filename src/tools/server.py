@@ -7,7 +7,7 @@ Parses <tool_call> blocks from LLM responses and routes to the correct tool.
 from __future__ import annotations
 
 import json
-import logging
+from src.utils.logger import get_logger
 import re
 import time
 from typing import Any, Dict, List, Optional
@@ -27,7 +27,7 @@ from .message_tool import MessageTool
 from .email_tool import EmailTool
 from .web_tool import WebSearchTool, WeatherTool
 
-logger = logging.getLogger("friday.tools.server")
+logger = get_logger("friday.tools.server")
 
 
 class MCPToolServer:

@@ -1,5 +1,5 @@
 import time
-import logging
+from src.utils.logger import get_logger
 import threading
 import os
 import datetime
@@ -8,7 +8,7 @@ import subprocess
 from collections import deque
 from typing import Any, Dict
 
-logger = logging.getLogger("friday.proactive_engine")
+logger = get_logger("friday.proactive_engine")
 
 
 class ProactiveEngine:
