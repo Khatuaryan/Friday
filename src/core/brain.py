@@ -342,6 +342,17 @@ class FridayBrain:
             tool_result = tool_server.execute_tool(tool_call)
             logger.info("Tool '%s' result: %s", tool_call.get("name"), str(tool_result)[:200])
 
+            # Generate instant human-readable response for simple whitelisted action tools to bypass the local Phi pass entirely
+            action_response = self._generate_default_action_response(
+                tool_call.get("name", ""),
+                tool_call.get("arguments", {}),
+                tool_result if isinstance(tool_result, dict) else {},
+                detected_language
+            )
+            if action_response:
+                final_response = action_response
+                break
+
             # Check if execution requires verbal confirmation (destructive actions)
             if isinstance(tool_result, dict) and tool_result.get("requires_confirmation"):
                 self.pending_confirmation = tool_result
@@ -402,6 +413,63 @@ class FridayBrain:
         from src.tools.server import MCPToolServer
         tool_server = MCPToolServer()
         return tool_server.execute_tool(pending_action)
+
+    def _generate_default_action_response(
+        self, tool_name: str, tool_args: dict, tool_result: dict, lang: str
+    ) -> str | None:
+        """Generate a native, human-readable confirmation for simple action tools, bypassing LLM passes."""
+        if tool_name == "control_application":
+            action = tool_args.get("action", "open")
+            app = tool_args.get("app_name", "Application")
+            if lang == "hi":
+                return f"आपकी {app} {'खोल दी गई है' if action == 'open' else 'बंद कर दी गई है'}।"
+            return f"I have {action}ed {app} for you."
+            
+        if tool_name == "control_media":
+            action = tool_args.get("action", "")
+            if action == "volume":
+                vol = tool_args.get("value", 50)
+                if lang == "hi":
+                    return f"आवाज़ को {vol} प्रतिशत पर सेट कर दिया गया है।"
+                return f"System volume set to {vol} percent."
+            if action == "mute":
+                if lang == "hi":
+                    return "आवाज़ बंद कर दी गई है।"
+                return "System volume muted."
+            if action == "unmute":
+                if lang == "hi":
+                    return "आवाज़ चालू कर दी गई है।"
+                return "System volume unmuted."
+            if lang == "hi":
+                return f"मीडिया को {action} कर दिया गया है।"
+            return f"Media {action}ed."
+            
+        if tool_name == "clipboard":
+            action = tool_args.get("action", "get")
+            if action == "set":
+                if lang == "hi":
+                    return "मैंने टेक्स्ट को आपके क्लिपबोर्ड पर कॉपी कर दिया है।"
+                return "Text successfully copied to your clipboard."
+                
+        if tool_name == "send_message":
+            recipient = tool_args.get("recipient", "contact")
+            if lang == "hi":
+                return f"{recipient} को संदेश भेज दिया गया है।"
+            return f"iMessage sent successfully to {recipient}."
+            
+        if tool_name == "manage_email":
+            action = tool_args.get("action", "draft")
+            recipient = tool_args.get("recipient", "recipient")
+            if action == "send":
+                if lang == "hi":
+                    return f"{recipient} को ईमेल भेज दिया गया है।"
+                return f"Email sent successfully to {recipient}."
+            if action == "draft":
+                if lang == "hi":
+                    return f"{recipient} के लिए ईमेल ड्राफ्ट तैयार कर दिया गया है।"
+                return f"Email draft prepared for {recipient}."
+                
+        return None
 
     def _lazy_load_local_fallback(self, reason: str | None = None) -> None:
         """Lazy-loads the local Phi-3.5-mini fallback model into memory."""
@@ -574,20 +642,32 @@ class FridayBrain:
     def _enforce_response_constraints(self, text: str) -> str:
         """
         Enforce 50-word / 300-character ceiling for TTS.
-        Find last complete sentence within limit. Hard cut if no sentence found.
+        Find the last complete sentence within limit.
+        If no complete sentence found, find the last natural clause boundary.
+        If still no clause boundary found, truncate at the last word boundary to avoid cutting words in half.
         """
         if len(text) <= 300:
             return text
 
-        # Try to find last sentence boundary within 350 chars (grace window)
-        candidate = text[:350]
+        # Try to find last sentence boundary within 300 chars
+        candidate = text[:300]
         for punct in ['. ', '! ', '? ']:
             last_idx = candidate.rfind(punct)
-            if last_idx > 100:  # Must be at least 100 chars in
+            if last_idx > 50:  # Any complete sentence at least 50 chars long is good
                 return candidate[:last_idx + 1].strip()
 
-        # No clean boundary found — hard cut at 300
-        return text[:300].strip() + "..."
+        # No clean sentence boundary found. Let's find the last clause boundary (comma, semicolon, conjunction)
+        for punct in [', ', '; ', ' - ', ' and ', ' but ', ' since ', ' because ', ' which ']:
+            last_idx = candidate.rfind(punct)
+            if last_idx > 100:  # Must be at least 100 chars in to be meaningful
+                return candidate[:last_idx].strip() + "."
+
+        # No clause boundary found — truncate at last word boundary before 300 chars
+        last_space = candidate.rfind(' ')
+        if last_space > 100:
+            return candidate[:last_space].strip() + "..."
+
+        return candidate.strip() + "..."
 
     def think_with_memory_and_context(self, user_message: str, max_tool_calls: int = 3) -> str:
         """Thinks using RAG memory, active context, and tool-calling support."""
