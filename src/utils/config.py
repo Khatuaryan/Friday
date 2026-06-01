@@ -59,15 +59,24 @@ class MemoryConfig(BaseModel):
 
 
 
+class OpenRouterConfig(BaseModel):
+    """OpenRouter API configuration."""
+    api_key: Optional[str] = None
+    model: str = "google/gemma-4-31b-it:free"
+
+
 class FridayConfig(BaseModel):
     """Top-level validated configuration."""
-    hardware: HardwareConfig
+    hardware: HardwareConfig = HardwareConfig()
     active_model: str
     models_registry: Dict[str, ModelEntry]
     memory: MemoryConfig = MemoryConfig()
+    openrouter: Optional[OpenRouterConfig] = None
 
     @model_validator(mode="after")
     def _check_active_model(self) -> "FridayConfig":
+        if self.active_model == "openrouter":
+            return self
         if self.active_model not in self.models_registry:
             raise ValueError(
                 f"active_model '{self.active_model}' not found in models_registry. "
@@ -77,6 +86,13 @@ class FridayConfig(BaseModel):
 
     @property
     def active_model_config(self) -> ModelEntry:
+        if self.active_model == "openrouter":
+            return ModelEntry(
+                repo_id="openrouter",
+                path="",
+                memory_gb=0.0,
+                context_window=8192
+            )
         return self.models_registry[self.active_model]
 
 

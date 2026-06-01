@@ -38,38 +38,50 @@ class FridayBrain:
         context_window: int = 4096,
         config_path: str | Path | None = None,
     ) -> None:
-        import yaml
-        
-        # Load from friday_config.yaml if possible
-        if not config_path:
-            config_path = Path(__file__).parent.parent.parent / "config" / "friday_config.yaml"
-            
+        import os
+        from src.utils.config import get_config
+
+        # Try loading centralized config first
         config = None
-        if Path(config_path).exists():
-            try:
-                with open(config_path) as f:
-                    config = yaml.safe_load(f)
-            except Exception as e:
-                logger.warning(f"Failed to load config at {config_path}: {e}")
-                
+        self.active_model = "phi-3.5-mini"
+        self.openrouter_config = None
+        
+        try:
+            from src.utils.config import load_config
+            if config_path:
+                import src.utils.config as cfg_mod
+                cfg_mod._config = None # Reset singleton cache for test isolation
+                config = load_config(config_path)
+            else:
+                config = get_config()
+            self.active_model = config.active_model
+            self.openrouter_config = config.openrouter
+        except Exception as e:
+            logger.warning(f"Failed to load centralized config: {e}")
+
         # If model_path is explicitly provided, prioritize it
         if model_path:
             self.model_path = str(model_path)
             self.model_memory_gb = 2.2
             self.context_window = context_window
-        elif config and "active_model" in config and "models_registry" in config:
-            active = config["active_model"]
-            model_cfg = config["models_registry"].get(active)
-            if model_cfg:
-                self.model_path = model_cfg["path"]
-                self.model_memory_gb = model_cfg["memory_gb"]
-                self.context_window = model_cfg.get("context_window", context_window)
-                logger.info(f"Loaded active model '{active}' from registry (path={self.model_path}, memory={self.model_memory_gb}GB, context={self.context_window})")
+            self.active_model = "phi-3.5-mini"  # Treat as local model launch
+        elif self.active_model == "openrouter":
+            self.model_path = "openrouter"
+            self.model_memory_gb = 0.0
+            self.context_window = 8192
+            if self.openrouter_config:
+                self.openrouter_api_key = self.openrouter_config.api_key or os.getenv("OPENROUTER_API_KEY", "")
+                self.openrouter_model = self.openrouter_config.model
             else:
-                logger.warning(f"Active model '{active}' not found in registry. Using defaults.")
-                self.model_path = self.DEFAULT_MODEL_PATH
-                self.model_memory_gb = 2.2
-                self.context_window = context_window
+                self.openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "")
+                self.openrouter_model = "google/gemma-4-31b-it:free"
+            logger.info(f"Using OpenRouter Brain Engine: model={self.openrouter_model}")
+        elif config and hasattr(config, "models_registry") and self.active_model in config.models_registry:
+            model_cfg = config.models_registry[self.active_model]
+            self.model_path = model_cfg.path
+            self.model_memory_gb = model_cfg.memory_gb
+            self.context_window = model_cfg.context_window
+            logger.info(f"Loaded active model '{self.active_model}' from registry (path={self.model_path}, memory={self.model_memory_gb}GB, context={self.context_window})")
         else:
             self.model_path = self.DEFAULT_MODEL_PATH
             self.model_memory_gb = 2.2
@@ -101,43 +113,51 @@ class FridayBrain:
 
     def load_model(self) -> float:
         """
-        Load Phi-3.5-mini into memory.
+        Load active model. For local models, loads files; for OpenRouter, validates API key.
 
         Returns:
             Load time in seconds.
-
-        Raises:
-            MemoryError: If insufficient RAM.
-            FileNotFoundError: If model files missing.
         """
-        from src.memory.manager import memory_manager
-
-        # Pre-flight memory check
-        if not memory_manager.check_can_load_model(self.model_memory_gb):
-            raise MemoryError(
-                f"Insufficient memory to load active model (need {self.model_memory_gb} GB). "
-                "Close heavy applications and try again."
-            )
-
-        model_dir = Path(self.model_path)
-        if not model_dir.exists():
-            raise FileNotFoundError(
-                f"Model not found at {model_dir}. "
-                f"Run: python scripts/download_models.py"
-            )
-
-        logger.info("Loading Phi-3.5-mini from %s ...", self.model_path)
         start = time.perf_counter()
 
-        from mlx_lm import load
-        loaded = load(self.model_path)
-        self._model, self._tokenizer = loaded[0], loaded[1]
+        if self.active_model == "openrouter":
+            import os
+            # Ensure API key is configured
+            self.openrouter_api_key = self.openrouter_api_key or os.getenv("OPENROUTER_API_KEY", "")
+            if not self.openrouter_api_key:
+                raise ValueError("OpenRouter API key is missing. Set OPENROUTER_API_KEY in .env or config.")
+            
+            logger.info("Initializing F.R.I.D.A.Y. via OpenRouter Cloud API (Gemma 4 31B:free)")
+            self._loaded = True
+            load_time = time.perf_counter() - start
+        else:
+            from src.memory.manager import memory_manager
 
-        load_time = time.perf_counter() - start
-        self._loaded = True
+            # Pre-flight memory check
+            if not memory_manager.check_can_load_model(self.model_memory_gb):
+                raise MemoryError(
+                    f"Insufficient memory to load active model (need {self.model_memory_gb} GB). "
+                    "Close heavy applications and try again."
+                )
 
-        logger.info("Phi-3.5-mini loaded in %.1fs", load_time)
-        memory_manager.log_usage()
+            model_dir = Path(self.model_path)
+            if not model_dir.exists():
+                raise FileNotFoundError(
+                    f"Model not found at {model_dir}. "
+                    f"Run: python scripts/download_models.py"
+                )
+
+            logger.info("Loading Phi-3.5-mini from %s ...", self.model_path)
+
+            from mlx_lm import load
+            loaded = load(self.model_path)
+            self._model, self._tokenizer = loaded[0], loaded[1]
+
+            load_time = time.perf_counter() - start
+            self._loaded = True
+
+            logger.info("Phi-3.5-mini loaded in %.1fs", load_time)
+            memory_manager.log_usage()
         
         # Initialize Phase 6-8 subsystems
         try:
@@ -372,73 +392,121 @@ class FridayBrain:
     ) -> str:
         """
         Single LLM inference pass.
-        Builds a full chat template from conversation history + active session messages.
-        Does NOT write to conversation history.
+        If OpenRouter, sends POST request via httpx.
+        If local, uses MLX.
         """
-        import mlx.core as mx
-        from mlx_lm import generate
-        from mlx_lm.sample_utils import make_sampler, make_logits_processors
-
-        mx.default_stream(mx.gpu)
-        mx.clear_cache()
-
-        # Build full message list for chat template
-        chat_messages = []
-        if system_prompt:
-            chat_messages.append({"role": "system", "content": system_prompt})
+        if self.active_model == "openrouter":
+            import httpx
+            import json
             
-        # Add conversation history
-        for user_msg, assistant_msg in self._conversation_history:
-            chat_messages.append({"role": "user", "content": user_msg})
-            chat_messages.append({"role": "assistant", "content": assistant_msg})
-            
-        # Add current session messages
-        chat_messages.extend(session_messages)
-
-        if self._tokenizer is not None:
-            prompt = self._tokenizer.apply_chat_template(
-                chat_messages,
-                tokenize=False,
-                add_generation_prompt=True
-            )
-        else:
-            # Fallback if tokenizer not loaded (e.g. unit tests)
-            prompt = ""
+            chat_messages = []
             if system_prompt:
-                prompt += f"<|system|>\n{system_prompt}<|end|>\n"
-            for msg in chat_messages:
-                if msg["role"] == "system":
-                    continue
-                prompt += f"<|{msg['role']}|>\n{msg['content']}<|end|>\n"
-            prompt += "<|assistant|>\n"
+                chat_messages.append({"role": "system", "content": system_prompt})
+            
+            # Add conversation history
+            for user_msg, assistant_msg in self._conversation_history:
+                chat_messages.append({"role": "user", "content": user_msg})
+                chat_messages.append({"role": "assistant", "content": assistant_msg})
+                
+            # Add current session messages
+            chat_messages.extend(session_messages)
+            
+            headers = {
+                "Authorization": f"Bearer {self.openrouter_api_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://github.com/aryan/friday",
+                "X-Title": "FRIDAY Voice Assistant",
+            }
+            
+            payload = {
+                "model": self.openrouter_model,
+                "messages": chat_messages,
+                "temperature": self.temperature,
+                "max_tokens": self.max_tokens,
+            }
+            
+            start = time.perf_counter()
+            try:
+                response = httpx.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                    timeout=30.0,
+                )
+                response.raise_for_status()
+                res_json = response.json()
+                content = res_json["choices"][0]["message"]["content"].strip()
+                latency = time.perf_counter() - start
+                logger.info(f"OpenRouter Gemma 4 generated response in {latency:.2f}s")
+                return content
+            except Exception as e:
+                logger.error(f"OpenRouter API call failed: {e}")
+                return "I apologize, but I encountered a connection issue while communicating with my cloud brain module."
+        else:
+            import mlx.core as mx
+            from mlx_lm import generate
+            from mlx_lm.sample_utils import make_sampler, make_logits_processors
 
-        response = generate(
-            self._model,
-            self._tokenizer,
-            prompt=prompt,
-            max_tokens=self.max_tokens,
-            sampler=make_sampler(self.temperature),
-            logits_processors=make_logits_processors(
-                repetition_penalty=1.1,
-                repetition_context_size=50
-            ),
-            verbose=False,
-        )
-
-        if "<|end|>" in response:
-            response = response.split("<|end|>")[0]
-
-        # Early stop if the model emits other stop tokens
-        for token in ["<|end_of_text|>", "<start_of_turn>", "<end_of_turn>"]:
-            if token in response:
-                response = response.split(token)[0]
-
-        try:
+            mx.default_stream(mx.gpu)
             mx.clear_cache()
-        except Exception:
-            pass
 
-        return response.strip()
+            # Build full message list for chat template
+            chat_messages = []
+            if system_prompt:
+                chat_messages.append({"role": "system", "content": system_prompt})
+                
+            # Add conversation history
+            for user_msg, assistant_msg in self._conversation_history:
+                chat_messages.append({"role": "user", "content": user_msg})
+                chat_messages.append({"role": "assistant", "content": assistant_msg})
+                
+            # Add current session messages
+            chat_messages.extend(session_messages)
+
+            if self._tokenizer is not None:
+                prompt = self._tokenizer.apply_chat_template(
+                    chat_messages,
+                    tokenize=False,
+                    add_generation_prompt=True
+                )
+            else:
+                # Fallback if tokenizer not loaded (e.g. unit tests)
+                prompt = ""
+                if system_prompt:
+                    prompt += f"<|system|>\n{system_prompt}<|end|>\n"
+                for msg in chat_messages:
+                    if msg["role"] == "system":
+                        continue
+                    prompt += f"<|{msg['role']}|>\n{msg['content']}<|end|>\n"
+                prompt += "<|assistant|>\n"
+
+            response = generate(
+                self._model,
+                self._tokenizer,
+                prompt=prompt,
+                max_tokens=self.max_tokens,
+                sampler=make_sampler(self.temperature),
+                logits_processors=make_logits_processors(
+                    repetition_penalty=1.1,
+                    repetition_context_size=50
+                ),
+                verbose=False,
+            )
+
+            if "<|end|>" in response:
+                response = response.split("<|end|>")[0]
+
+            # Early stop if the model emits other stop tokens
+            for token in ["<|end_of_text|>", "<start_of_turn>", "<end_of_turn>"]:
+                if token in response:
+                    response = response.split(token)[0]
+
+            try:
+                mx.clear_cache()
+            except Exception:
+                pass
+
+            return response.strip()
 
     def _enforce_response_constraints(self, text: str) -> str:
         """
@@ -542,44 +610,106 @@ class FridayBrain:
         if not self._loaded:
             raise RuntimeError("Model not loaded. Call load_model() first.")
 
-        # Ensure MLX GPU stream is ready for this thread and cache is cleared to prevent Metal OOM
-        import mlx.core as mx
-        mx.default_stream(mx.gpu)
-        mx.clear_cache()
-
-        prompt = self._format_prompt(user_message, system_prompt)
-
-        from mlx_lm import stream_generate
-        from mlx_lm.sample_utils import make_sampler, make_logits_processors
-        full_response = ""
-        for response in stream_generate(
-            self._model,
-            self._tokenizer,
-            prompt=prompt,
-            max_tokens=self.max_tokens,
-            sampler=make_sampler(self.temperature),
-            logits_processors=make_logits_processors(repetition_penalty=1.1, repetition_context_size=50),
-        ):
-            token_text = response.text
-            full_response += token_text
+        if self.active_model == "openrouter":
+            import httpx
+            import json
             
-            # Early stop if the model spits out the end token
-            if "<|end|>" in full_response:
-                clean_text = token_text.replace("<|end|>", "")
-                if clean_text:
-                    yield clean_text
-                break
+            chat_messages = []
+            from src.core.prompts import DEFAULT_SYSTEM_PROMPT
+            sys_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
+            if sys_prompt:
+                chat_messages.append({"role": "system", "content": sys_prompt})
+            for user_msg, assistant_msg in self._conversation_history:
+                chat_messages.append({"role": "user", "content": user_msg})
+                chat_messages.append({"role": "assistant", "content": assistant_msg})
+            chat_messages.append({"role": "user", "content": user_message})
+            
+            headers = {
+                "Authorization": f"Bearer {self.openrouter_api_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://github.com/aryan/friday",
+                "X-Title": "FRIDAY Voice Assistant",
+            }
+            
+            payload = {
+                "model": self.openrouter_model,
+                "messages": chat_messages,
+                "temperature": self.temperature,
+                "max_tokens": self.max_tokens,
+                "stream": True,
+            }
+            
+            full_response = ""
+            try:
+                with httpx.stream(
+                    "POST",
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                    timeout=30.0,
+                ) as response:
+                    response.raise_for_status()
+                    for line in response.iter_lines():
+                        if not line:
+                            continue
+                        if line.startswith("data: "):
+                            data_str = line[6:].strip()
+                            if data_str == "[DONE]":
+                                break
+                            try:
+                                data_json = json.loads(data_str)
+                                token_text = data_json["choices"][0]["delta"].get("content", "")
+                                if token_text:
+                                    full_response += token_text
+                                    yield token_text
+                            except Exception:
+                                pass
+            except Exception as e:
+                logger.error(f"OpenRouter streaming call failed: {e}")
+                err_msg = " I encountered a cloud brain connection issue."
+                yield err_msg
+                full_response += err_msg
                 
-            yield token_text
-
-        # Commit to history after stream completes
-        self._add_to_history(user_message, full_response.strip())
-
-        # Clear Metal cache after generation to release allocated memory immediately
-        try:
+            self._add_to_history(user_message, full_response.strip())
+        else:
+            # Ensure MLX GPU stream is ready for this thread and cache is cleared to prevent Metal OOM
+            import mlx.core as mx
+            mx.default_stream(mx.gpu)
             mx.clear_cache()
-        except Exception:
-            pass
+
+            prompt = self._format_prompt(user_message, system_prompt)
+
+            from mlx_lm import stream_generate
+            from mlx_lm.sample_utils import make_sampler, make_logits_processors
+            full_response = ""
+            for response in stream_generate(
+                self._model,
+                self._tokenizer,
+                prompt=prompt,
+                max_tokens=self.max_tokens,
+                sampler=make_sampler(self.temperature),
+                logits_processors=make_logits_processors(repetition_penalty=1.1, repetition_context_size=50),
+            ):
+                token_text = response.text
+                full_response += token_text
+                
+                # Early stop if the model spits out the end token
+                if "<|end|>" in full_response:
+                    clean_text = token_text.replace("<|end|>", "")
+                    if clean_text:
+                        yield clean_text
+                    break
+                    
+                yield token_text
+
+            # Commit to history after stream completes
+            self._add_to_history(user_message, full_response.strip())
+
+            # Clear Metal cache after generation to release allocated memory immediately
+            try:
+                mx.clear_cache()
+            except Exception:
+                pass
 
     def _format_prompt(self, user_message: str, system_prompt: str | None = None) -> str:
         """

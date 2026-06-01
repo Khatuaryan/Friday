@@ -125,17 +125,26 @@ def validate_environment() -> bool:
         all_ok = False
         return all_ok
 
-    # Model files exist
-    model_path = PROJECT_ROOT / cfg.active_model_config.path
-    if not model_path.exists():
-        logger.warning(
-            "⚠️  Model not found at %s. "
-            "Run: python scripts/setup/download_models.py --model active",
-            model_path,
-        )
-        # Not a hard failure — brain will fail gracefully at load time
+    # Model validation
+    if cfg.active_model == "openrouter":
+        api_key = cfg.openrouter.api_key if cfg.openrouter else None
+        if not api_key:
+            import os
+            api_key = os.getenv("OPENROUTER_API_KEY", "")
+        if not api_key:
+            logger.warning("⚠️  OpenRouter API key is missing. Set OPENROUTER_API_KEY in .env or config.")
+        else:
+            logger.info("✅ OpenRouter Cloud API configured (Gemma 4 31B:free)")
     else:
-        logger.info("✅ Model found at %s", model_path)
+        model_path = PROJECT_ROOT / cfg.active_model_config.path
+        if not model_path.exists():
+            logger.warning(
+                "⚠️  Model not found at %s. "
+                "Run: python scripts/setup/download_models.py --model active",
+                model_path,
+            )
+        else:
+            logger.info("✅ Model found at %s", model_path)
 
     # Face encodings exist
     face_path = PROJECT_ROOT / "data" / "faces" / "boss_vision.pkl"

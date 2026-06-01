@@ -34,8 +34,15 @@ class EmbeddingModel:
         status = memory_manager.get_status()
         if status.pressure_level == PressureLevel.CRITICAL:
             import os
-            # Allow developer to override critical blocks for extreme RAM environments
-            buffer_val = float(os.getenv("FRIDAY_MEM_BUFFER", 1.0))
+            from src.utils.config import get_config
+            
+            try:
+                cfg = get_config()
+                default_buffer = cfg.memory.safety_buffer_gb
+            except Exception:
+                default_buffer = 1.0
+
+            buffer_val = float(os.getenv("FRIDAY_MEM_BUFFER", default_buffer))
             if buffer_val <= 0.5:
                 logger.warning(
                     f"System memory is CRITICAL ({status.percent:.1f}% used), "

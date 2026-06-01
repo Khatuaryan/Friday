@@ -8,7 +8,11 @@ hardware:
   warning_threshold: 0.75   # 75% system RAM = warning
   critical_threshold: 0.85  # 85% system RAM = critical
 
-active_model: "phi-3.5-mini"
+active_model: "openrouter"
+
+openrouter:
+  api_key: "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"
+  model: "google/gemma-4-31b-it:free"
 
 models_registry:
   phi-3.5-mini:
