@@ -226,6 +226,54 @@ class FridayBrain:
 
         return response_text
 
+    def _parse_cloud_json(self, raw_response: str) -> dict:
+        """Parse raw response from cloud model into intent dictionary."""
+        import json
+        text = raw_response.strip()
+        
+        # 1. Clean up markdown code blocks if any
+        if text.startswith("```json"):
+            text = text[7:].strip()
+        elif text.startswith("```"):
+            text = text[3:].strip()
+        if text.endswith("```"):
+            text = text[:-3].strip()
+
+        # 2. Try parsing as direct JSON
+        try:
+            return json.loads(text)
+        except Exception:
+            pass
+
+        # 3. Try to locate balanced JSON brackets { ... } inside the string
+        try:
+            start = text.find("{")
+            end = text.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                return json.loads(text[start:end+1])
+        except Exception:
+            pass
+
+        # 4. Fallback: Check if it looks like a legacy XML <tool_call>
+        from src.tools.server import MCPToolServer
+        tool_server = MCPToolServer()
+        tool_call = tool_server.parse_tool_call(raw_response)
+        if tool_call:
+            return {
+                "intent": "tool_call",
+                "tool_name": tool_call.get("name"),
+                "arguments": tool_call.get("arguments", {}),
+                "conversational_response": None
+            }
+
+        # 5. Ultimate Fallback: Treat as a direct conversational text
+        return {
+            "intent": "conversational",
+            "tool_name": None,
+            "arguments": None,
+            "conversational_response": raw_response
+        }
+
     def think_full(
         self,
         user_message: str,
@@ -234,11 +282,13 @@ class FridayBrain:
     ) -> str:
         """
         Unified reasoning cycle:
-        1. Inject dynamic context (datetime, locale, active app)
-        2. Retrieve RAG memories
-        3. Build system prompt
-        4. Run tool-calling loop (max_tool_calls ceiling)
-        5. Return concise final response
+        If active model is OpenRouter:
+          1. Call OpenRouter to obtain a structured JSON intent/tool request.
+          2. Execute any requested local tools.
+          3. Lazy-load local Phi-3.5-mini to synthesize the conversational text or tool results.
+          4. Instantly unload local Phi to restore idle memory to 0 MB.
+        If active model is Local (Phi):
+          1. Execute legacy tool calling loop with programmatic synthesis.
         """
         if not self._loaded:
             raise RuntimeError("Model not loaded. Call load_model() first.")
@@ -249,7 +299,6 @@ class FridayBrain:
                 "Input truncated: %d → %d chars", len(user_message), MAX_INPUT_CHARS
             )
             user_message = user_message[:MAX_INPUT_CHARS]
-
 
         import json
         from datetime import datetime
@@ -292,107 +341,207 @@ class FridayBrain:
         if self.context_tracker:
             active_app = self.context_tracker.get_current_context()
 
-        # 3. Setup Tool Server & build dynamic system prompt
+        # 3. Setup Tool Server & build descriptions
         from src.tools.server import MCPToolServer
-        from src.core.prompts import build_full_system_prompt
-        
         tool_server = MCPToolServer()
         registered_tools = tool_server.get_tool_names()
         tools_desc = tool_server.get_tools_description()
-        
-        system_prompt = build_full_system_prompt(
-            datetime_str=datetime_str,
-            active_app=active_app,
-            rag_memories=rag_memories,
-            registered_tools=registered_tools,
-            tools_description=tools_desc,
-            user_language=detected_language,
-        )
 
-
-        # 4. Tool-calling loop
         session_messages = [{"role": "user", "content": user_message}]
         final_response = ""
-        tool_calls_made = 0
 
-        while tool_calls_made <= max_tool_calls:
-            # If primary brain is OpenRouter and we already executed a tool, route the next 
-            # synthesis pass to the local lazy-loaded model to prevent OpenRouter 429 rate limits.
-            if self.active_model == "openrouter" and tool_calls_made > 0:
-                try:
-                    self._lazy_load_local_fallback(reason="running local tool-result synthesis pass")
-                    raw_response = self._generate_local(system_prompt, session_messages)
-                except Exception as fallback_err:
-                    logger.critical(f"Local fallback tool synthesis failed: {fallback_err}")
-                    raw_response = "I apologize, but I encountered an error during local response synthesis."
-            else:
-                raw_response = self._generate(system_prompt, session_messages)
-                
-            tool_call = tool_server.parse_tool_call(raw_response)
-
-            if not tool_call or tool_calls_made == max_tool_calls:
-                # No tool call, or ceiling reached — this is the final response
-                final_response = raw_response
-                # Strip any residual tool_call tags if ceiling was hit mid-loop
-                if "<tool_call>" in final_response:
-                    final_response = "I was unable to retrieve that information right now."
-                break
-
-            # Execute tool and accumulate context
-            tool_result = tool_server.execute_tool(tool_call)
-            logger.info("Tool '%s' result: %s", tool_call.get("name"), str(tool_result)[:200])
-
-            # Generate instant human-readable response for simple whitelisted action tools to bypass the local Phi pass entirely
-            action_response = self._generate_default_action_response(
-                tool_call.get("name", ""),
-                tool_call.get("arguments", {}),
-                tool_result if isinstance(tool_result, dict) else {},
-                detected_language
+        # ==========================================
+        # PATH A: OpenRouter Cloud + Local Phi Pipeline
+        # ==========================================
+        if self.active_model == "openrouter":
+            from src.core.prompts import build_openrouter_json_prompt, LOCAL_SYNTHESIS_SYSTEM_PROMPT
+            
+            # Step A1: Construct dynamic JSON system prompt
+            system_prompt = build_openrouter_json_prompt(
+                datetime_str=datetime_str,
+                active_app=active_app,
+                rag_memories=rag_memories,
+                registered_tools=registered_tools,
+                tools_description=tools_desc,
+                user_language=detected_language,
             )
-            if action_response:
-                final_response = action_response
-                break
 
-            # Check if execution requires verbal confirmation (destructive actions)
-            if isinstance(tool_result, dict) and tool_result.get("requires_confirmation"):
-                self.pending_confirmation = tool_result
-                action_desc = tool_result.get("action_description", "perform a restricted action")
-                final_response = f"I'm about to {action_desc}. Please say confirm to proceed, or cancel."
-                break
+            tool_calls_made = 0
+            tool_results_history = []
+            last_tool_name = None
+            last_tool_args = {}
+            conversational_response = ""
 
-            # Accumulate this exchange in session messages
-            session_messages.append({"role": "assistant", "content": raw_response})
-            session_messages.append({
-                "role": "user",
-                "content": (
-                    f"Tool '{tool_call['name']}' returned: {json.dumps(tool_result)}\n\n"
-                    "The tool has executed. You now have all the information you need. "
-                    "DO NOT call any more tools. Provide your final answer in under 50 words, "
-                    "spoken aloud to the user. No lists, no markdown."
+            # Step A2: Run multi-turn tool-calling loop with OpenRouter
+            while tool_calls_made < max_tool_calls:
+                logger.info("Routing query/follow-up to OpenRouter (Gemma 4)...")
+                raw_response = self._generate(system_prompt, session_messages)
+                logger.info("Raw response from OpenRouter: %s", raw_response)
+
+                cloud_json = self._parse_cloud_json(raw_response)
+                logger.info("Parsed cloud JSON: %s", cloud_json)
+
+                intent = cloud_json.get("intent", "conversational")
+                
+                if intent != "tool_call" or not cloud_json.get("tool_name"):
+                    # Gemma chose to converse, or finished calling tools
+                    conversational_response = cloud_json.get("conversational_response") or raw_response
+                    break
+
+                tool_name = cloud_json.get("tool_name")
+                arguments = cloud_json.get("arguments") or {}
+                last_tool_name = tool_name
+                last_tool_args = arguments
+
+                logger.info("Executing requested tool: %s with arguments %s", tool_name, arguments)
+                tool_call_dict = {"name": tool_name, "arguments": arguments}
+                tool_result = tool_server.execute_tool(tool_call_dict)
+                logger.info("Tool execution result: %s", tool_result)
+
+                # Check if execution requires verbal confirmation (destructive actions)
+                if isinstance(tool_result, dict) and tool_result.get("requires_confirmation"):
+                    self.pending_confirmation = tool_result
+                    action_desc = tool_result.get("action_description", "perform a restricted action")
+                    final_response = f"I'm about to {action_desc}. Please say confirm to proceed, or cancel."
+                    
+                    self._add_to_history(user_message, final_response)
+                    if self.memory_store:
+                        try:
+                            self.memory_store.add_conversation_turn("assistant", final_response)
+                        except Exception as e:
+                            logger.warning(f"Failed to save assistant turn to RAG: {e}")
+                    return final_response
+
+                # Save tool execution to history context
+                tool_results_history.append({
+                    "tool_name": tool_name,
+                    "arguments": arguments,
+                    "result": tool_result
+                })
+
+                # Append assistant tool-call and user feedback back to the session context for the next turn
+                session_messages.append({"role": "assistant", "content": raw_response})
+                session_messages.append({
+                    "role": "user",
+                    "content": f"Tool '{tool_name}' returned: {json.dumps(tool_result)}"
+                })
+                
+                tool_calls_made += 1
+
+            # Step A3: Compile context and lazy-load local Phi-3.5-mini for natural synthesis pass
+            try:
+                self._lazy_load_local_fallback(reason="running local tool-result synthesis pass")
+                
+                if tool_results_history:
+                    json_context = {
+                        "tool_history": tool_results_history
+                    }
+                else:
+                    json_context = {
+                        "conversational_response": conversational_response
+                    }
+
+                # Format local synthesis prompt
+                synthesis_user_msg = f"""\
+Original User Query: {user_message}
+Target Language: {detected_language}
+JSON Context from Cloud/Tools:
+{json.dumps(json_context, indent=2)}
+
+Generate F.R.I.D.A.Y.'s final spoken response to the Boss:
+"""
+                logger.info("Sending context to local Phi for natural speech synthesis...")
+                final_response = self._generate_local(
+                    LOCAL_SYNTHESIS_SYSTEM_PROMPT,
+                    [{"role": "user", "content": synthesis_user_msg}]
                 )
-            })
-            tool_calls_made += 1
+                logger.info("Synthesized response from local Phi: %s", final_response)
+            except Exception as synthesis_err:
+                logger.critical(f"Local synthesis pass failed: {synthesis_err}")
+                # Fallback to programmatic synthesis if Phi fails to load/run
+                if tool_results_history:
+                    final_response = self._synthesize_tool_response(
+                        last_tool_name or "",
+                        last_tool_args or {},
+                        tool_results_history[-1]["result"] if isinstance(tool_results_history[-1]["result"], dict) else {},
+                        detected_language
+                    )
+                else:
+                    final_response = conversational_response
+            
+            # Post-process response constraints
+            final_response = self._enforce_response_constraints(final_response)
 
-        # 5. Post-process response constraints
-        final_response = self._enforce_response_constraints(final_response)
+            # Commit turn to history
+            self._add_to_history(user_message, final_response)
+            if self.memory_store:
+                try:
+                    self.memory_store.add_conversation_turn("assistant", final_response)
+                except Exception as e:
+                    logger.warning(f"Failed to save assistant turn to RAG: {e}")
 
-        # 6. Commit single clean turn to history
-        self._add_to_history(user_message, final_response)
-        
-        if self.memory_store:
-            try:
-                self.memory_store.add_conversation_turn("assistant", final_response)
-            except Exception as e:
-                logger.warning(f"Failed to save assistant turn to RAG store: {e}")
+            # Unload local model from memory immediately
+            if self._model is not None:
+                try:
+                    self.unload_model()
+                except Exception as unload_err:
+                    logger.warning(f"Failed to unload local model: {unload_err}")
 
-        # Unload local fallback model if it was lazy-loaded to conserve RAM
-        if self.active_model == "openrouter" and self._model is not None:
-            try:
-                self.unload_model()
-            except Exception as unload_err:
-                logger.warning(f"Failed to unload local model: {unload_err}")
+            return final_response
 
-        return final_response
+
+        # ==========================================
+        # PATH B: Legacy Local MLX Loop (Backward Compatible)
+        # ==========================================
+        else:
+            from src.core.prompts import build_full_system_prompt
+            system_prompt = build_full_system_prompt(
+                datetime_str=datetime_str,
+                active_app=active_app,
+                rag_memories=rag_memories,
+                registered_tools=registered_tools,
+                tools_description=tools_desc,
+                user_language=detected_language,
+            )
+
+            tool_calls_made = 0
+            while tool_calls_made <= max_tool_calls:
+                raw_response = self._generate(system_prompt, session_messages)
+                tool_call = tool_server.parse_tool_call(raw_response)
+
+                if not tool_call or tool_calls_made == max_tool_calls:
+                    final_response = raw_response
+                    if "<tool_call>" in final_response:
+                        final_response = "I was unable to retrieve that information right now."
+                    break
+
+                tool_result = tool_server.execute_tool(tool_call)
+                logger.info("Tool '%s' result: %s", tool_call.get("name"), str(tool_result)[:200])
+
+                if isinstance(tool_result, dict) and tool_result.get("requires_confirmation"):
+                    self.pending_confirmation = tool_result
+                    action_desc = tool_result.get("action_description", "perform a restricted action")
+                    final_response = f"I'm about to {action_desc}. Please say confirm to proceed, or cancel."
+                    break
+
+                final_response = self._synthesize_tool_response(
+                    tool_call.get("name", ""),
+                    tool_call.get("arguments", {}),
+                    tool_result if isinstance(tool_result, dict) else {},
+                    detected_language
+                )
+                break
+
+            final_response = self._enforce_response_constraints(final_response)
+            self._add_to_history(user_message, final_response)
+            if self.memory_store:
+                try:
+                    self.memory_store.add_conversation_turn("assistant", final_response)
+                except Exception as e:
+                    logger.warning(f"Failed to save assistant turn to RAG store: {e}")
+
+            return final_response
+
 
     def execute_pending_tool(self) -> Dict[str, Any]:
         """
@@ -414,17 +563,112 @@ class FridayBrain:
         tool_server = MCPToolServer()
         return tool_server.execute_tool(pending_action)
 
-    def _generate_default_action_response(
+    def _synthesize_tool_response(
         self, tool_name: str, tool_args: dict, tool_result: dict, lang: str
-    ) -> str | None:
-        """Generate a native, human-readable confirmation for simple action tools, bypassing LLM passes."""
+    ) -> str:
+        """
+        Natively/programmatically synthesize JSON tool results into fluent English/Hindi speech,
+        completely bypassing the second LLM pass (local and cloud) for ALL queries.
+        """
+        # Handle errors gracefully first
+        if isinstance(tool_result, dict):
+            error_msg = tool_result.get("error") or tool_result.get("error_message")
+            if error_msg:
+                if "access denied" in error_msg.lower() or "permission" in error_msg.lower():
+                    if lang == "hi":
+                        return f"त्रुटि: {tool_name} के लिए अनुमति अस्वीकार कर दी गई है। कृपया सिस्टम सेटिंग्स में पहुंच प्रदान करें।"
+                    return f"Error: Permission denied for {tool_name}. Please grant access in System Settings."
+                if lang == "hi":
+                    return f"क्षमा करें, कार्य विफल रहा: {error_msg}।"
+                return f"Sorry, the operation failed: {error_msg}."
+
+        # 1. get_weather
+        if tool_name == "get_weather":
+            loc = tool_result.get("location", tool_args.get("location", "Thane"))
+            temp = tool_result.get("temperature_celsius", "30")
+            feels = tool_result.get("feels_like_celsius", temp)
+            cond = tool_result.get("condition", "Clear").strip().lower()
+            hum = tool_result.get("humidity_percent", "60")
+            
+            cond_hi = "साफ" if "clear" in cond or "sunny" in cond else "बादल छाए हुए" if "cloud" in cond else "बारिश" if "rain" in cond else cond
+            
+            if lang == "hi":
+                return f"{loc} में मौसम {cond_hi} है, तापमान {temp} डिग्री सेल्सियस है, जो आर्द्रता के कारण {feels} डिग्री जैसा महसूस हो रहा है।"
+            return f"The weather in {loc} is {cond}. It is {temp}°C, feeling like {feels}°C with {hum}% humidity."
+
+        # 2. get_system_info
+        if tool_name == "get_system_info":
+            info_type = tool_args.get("info_type", "all")
+            
+            if info_type == "battery":
+                batt = tool_result.get("battery", {})
+                pct = batt.get("percent", 50)
+                plugged = batt.get("plugged_in", False)
+                time_rem = batt.get("time_remaining", "unknown")
+                
+                plugged_str = "चार्जिंग पर है" if plugged else "बैटरी पर चल रहा है"
+                plugged_str_en = "charging" if plugged else "not plugged in"
+                
+                if lang == "hi":
+                    time_str = f", {time_rem} शेष है" if time_rem != "unknown" else ""
+                    return f"आपका मैक अभी {pct} प्रतिशत पर {plugged_str} है{time_str}।"
+                time_str_en = f" with {time_rem} remaining" if time_rem != "unknown" else ""
+                return f"Your Mac is at {pct}% battery and is {plugged_str_en}{time_str_en}."
+                
+            if info_type == "storage":
+                storage = tool_result.get("storage", {})
+                free = storage.get("free_gb", "unknown")
+                total = storage.get("total_gb", "unknown")
+                if lang == "hi":
+                    return f"आपके पास {total} जीबी में से {free} जीबी खाली स्टोरेज उपलब्ध है।"
+                return f"You have {free} GB free storage out of {total} GB."
+                
+            if info_type == "memory":
+                mem = tool_result.get("memory", {})
+                used = mem.get("used_gb")
+                total = mem.get("total_gb")
+                avail = mem.get("available_gb")
+                
+                if avail is not None:
+                    if lang == "hi":
+                        return f"मैक पर {avail} जीबी रैम मेमोरी उपलब्ध है।"
+                    return f"Your Mac has {avail} GB of RAM available."
+                
+                used = used or "unknown"
+                total = total or "unknown"
+                if lang == "hi":
+                    return f"मैक अभी {total} जीबी में से {used} जीबी रैम मेमोरी का उपयोग कर रहा है।"
+                return f"Your Mac is using {used} GB of RAM out of {total} GB total."
+                
+            if info_type == "time":
+                curr_time = tool_result.get("time", "unknown")
+                if lang == "hi":
+                    return f"अभी समय {curr_time} है।"
+                return f"The current time is {curr_time}."
+
+        # 3. get_calendar_events
+        if tool_name == "get_calendar_events":
+            events = tool_result.get("events", []) if isinstance(tool_result, dict) else tool_result
+            if not events:
+                if lang == "hi":
+                    return "आज आपके कैलेंडर में कोई कार्यक्रम निर्धारित नहीं है।"
+                return "You have no events scheduled in your calendar for today."
+            
+            event_titles = [f"'{ev.get('title', 'Meeting')}' at {ev.get('start_time', 'scheduled time')}" for ev in events[:3]]
+            joined_events = ", ".join(event_titles)
+            if lang == "hi":
+                return f"आपके पास आज {len(events)} कार्यक्रम हैं: {joined_events}।"
+            return f"You have {len(events)} events today: {joined_events}."
+
+        # 4. control_application
         if tool_name == "control_application":
             action = tool_args.get("action", "open")
             app = tool_args.get("app_name", "Application")
             if lang == "hi":
                 return f"आपकी {app} {'खोल दी गई है' if action == 'open' else 'बंद कर दी गई है'}।"
             return f"I have {action}ed {app} for you."
-            
+
+        # 5. control_media
         if tool_name == "control_media":
             action = tool_args.get("action", "")
             if action == "volume":
@@ -443,20 +687,67 @@ class FridayBrain:
             if lang == "hi":
                 return f"मीडिया को {action} कर दिया गया है।"
             return f"Media {action}ed."
-            
+
+        # 6. clipboard
         if tool_name == "clipboard":
             action = tool_args.get("action", "get")
             if action == "set":
                 if lang == "hi":
                     return "मैंने टेक्स्ट को आपके क्लिपबोर्ड पर कॉपी कर दिया है।"
                 return "Text successfully copied to your clipboard."
-                
+            if action == "get":
+                text = tool_result.get("text", "")
+                short_text = text[:100] + "..." if len(text) > 100 else text
+                if lang == "hi":
+                    return f"आपके क्लिपबोर्ड का टेक्स्ट है: {short_text}"
+                return f"The text in your clipboard is: {short_text}"
+
+        # 7. manage_reminders
+        if tool_name == "manage_reminders":
+            action = tool_args.get("action", "create")
+            title = tool_args.get("title", "Reminder")
+            if action == "create":
+                if lang == "hi":
+                    return f"स्मरणपत्र '{title}' सफलतापूर्वक जोड़ दिया गया है।"
+                return f"Reminder '{title}' successfully created."
+            if action == "complete":
+                if lang == "hi":
+                    return f"स्मरणपत्र '{title}' पूरा कर दिया गया है।"
+                return f"Reminder '{title}' marked as completed."
+
+        # 8. manage_calendar
+        if tool_name == "manage_calendar":
+            action = tool_args.get("action", "create")
+            title = tool_args.get("title", "Event")
+            start = tool_args.get("start_time", "scheduled time")
+            if action == "create":
+                if lang == "hi":
+                    return f"कैलेंडर कार्यक्रम '{title}' सफलतापूर्वक {start} के लिए जोड़ दिया गया है।"
+                return f"Calendar event '{title}' successfully created for {start}."
+
+        # 9. read_file / write_filesystem
+        if tool_name in ["read_file", "write_filesystem"]:
+            path = tool_args.get("path", "file")
+            filename = path.split("/")[-1] if "/" in path else path
+            if tool_name == "read_file":
+                content = tool_result.get("content", "")
+                short_content = content[:100] + "..." if len(content) > 100 else content
+                if lang == "hi":
+                    return f"फ़ाइल {filename} की सामग्री है: {short_content}"
+                return f"File {filename} contents are: {short_content}"
+            if tool_name == "write_filesystem":
+                if lang == "hi":
+                    return f"फ़ाइल {filename} सफलतापूर्वक लिख दी गई है।"
+                return f"File {filename} successfully written to disk."
+
+        # 10. send_message
         if tool_name == "send_message":
             recipient = tool_args.get("recipient", "contact")
             if lang == "hi":
                 return f"{recipient} को संदेश भेज दिया गया है।"
             return f"iMessage sent successfully to {recipient}."
-            
+
+        # 11. manage_email
         if tool_name == "manage_email":
             action = tool_args.get("action", "draft")
             recipient = tool_args.get("recipient", "recipient")
@@ -468,8 +759,33 @@ class FridayBrain:
                 if lang == "hi":
                     return f"{recipient} के लिए ईमेल ड्राफ्ट तैयार कर दिया गया है।"
                 return f"Email draft prepared for {recipient}."
-                
-        return None
+
+        # 12. execute_shell
+        if tool_name == "execute_shell":
+            stdout = tool_result.get("stdout", "").strip()
+            short_stdout = stdout[:100] + "..." if len(stdout) > 100 else stdout
+            if lang == "hi":
+                return f"शेल कमांड निष्पादित। आउटपुट: {short_stdout or 'सफलता'}"
+            return f"Shell command executed successfully. Output: {short_stdout or 'success'}"
+
+        # 13. web_search
+        if tool_name == "web_search":
+            results = tool_result.get("results", []) if isinstance(tool_result, dict) else tool_result
+            if not results:
+                if lang == "hi":
+                    return "खोज के कोई परिणाम नहीं मिले।"
+                return "No search results found."
+            snippet = results[0].get("snippet", "") if isinstance(results, list) and results else str(results)
+            short_snippet = snippet[:150] + "..." if len(snippet) > 150 else snippet
+            if lang == "hi":
+                return f"खोज परिणाम: {short_snippet}"
+            return f"Search result: {short_snippet}"
+
+        # Default fallback programmatic representation
+        formatted_result = str(tool_result)[:150]
+        if lang == "hi":
+            return f"कार्य {tool_name} पूरा हो गया। परिणाम: {formatted_result}।"
+        return f"Task {tool_name} completed. Result: {formatted_result}."
 
     def _lazy_load_local_fallback(self, reason: str | None = None) -> None:
         """Lazy-loads the local Phi-3.5-mini fallback model into memory."""

@@ -150,17 +150,68 @@ class TestFridayBrain:
              patch("src.tools.server.MCPToolServer.execute_tool") as mock_execute:
              
             # Call 1: returns a tool call XML
-            # Call 2: returns the final answer
             mock_gen.side_effect = [
-                '<tool_call>{"name": "get_system_info", "arguments": {"info_type": "memory"}}</tool_call>',
-                "System memory has 4.5 GB available. That's plenty, Boss!"
+                '<tool_call>{"name": "get_system_info", "arguments": {"info_type": "memory"}}</tool_call>'
             ]
             mock_execute.return_value = {"memory": {"available_gb": 4.5}}
             
             response = brain.think_full("How much memory is free?")
             
-            assert response == "System memory has 4.5 GB available. That's plenty, Boss!"
+            assert response == "Your Mac has 4.5 GB of RAM available."
             assert brain.get_history_length() == 1
-            assert brain._conversation_history[0] == ("How much memory is free?", "System memory has 4.5 GB available. That's plenty, Boss!")
+            assert brain._conversation_history[0] == ("How much memory is free?", "Your Mac has 4.5 GB of RAM available.")
+
+    def test_think_full_openrouter_conversational(self):
+        brain = FridayBrain()
+        brain.active_model = "openrouter"
+        brain._loaded = True
+        brain._model = MagicMock()
+        
+        with patch.object(brain, "_generate") as mock_gen, \
+             patch.object(brain, "_generate_local") as mock_gen_local, \
+             patch.object(brain, "_lazy_load_local_fallback") as mock_load, \
+             patch.object(brain, "unload_model") as mock_unload:
+             
+            mock_gen.return_value = '{"intent": "conversational", "tool_name": null, "arguments": null, "conversational_response": "The sky is blue."}'
+            mock_gen_local.return_value = "Boss, the sky is blue."
+            
+            response = brain.think_full("Why is the sky blue?")
+            
+            assert response == "Boss, the sky is blue."
+            mock_gen.assert_called_once()
+            mock_load.assert_called_once_with(reason="running local tool-result synthesis pass")
+            mock_gen_local.assert_called_once()
+            mock_unload.assert_called_once()
+
+    def test_think_full_openrouter_tool_call(self):
+        brain = FridayBrain()
+        brain.active_model = "openrouter"
+        brain._loaded = True
+        brain._model = MagicMock()
+        
+        with patch.object(brain, "_generate") as mock_gen, \
+             patch("src.tools.server.MCPToolServer.execute_tool") as mock_execute, \
+             patch.object(brain, "_generate_local") as mock_gen_local, \
+             patch.object(brain, "_lazy_load_local_fallback") as mock_load, \
+             patch.object(brain, "unload_model") as mock_unload:
+             
+            mock_gen.side_effect = [
+                '{"intent": "tool_call", "tool_name": "get_system_info", "arguments": {"info_type": "storage"}, "conversational_response": null}',
+                '{"intent": "conversational", "tool_name": null, "arguments": null, "conversational_response": "I have retrieved your storage details."}'
+            ]
+            mock_execute.return_value = {"storage": {"free_gb": 100.0, "total_gb": 250.0}}
+            mock_gen_local.return_value = "Boss, you have 100 GB of storage left."
+            
+            response = brain.think_full("How much storage is free?")
+            
+            assert response == "Boss, you have 100 GB of storage left."
+            assert mock_gen.call_count == 2
+            mock_execute.assert_called_once_with({"name": "get_system_info", "arguments": {"info_type": "storage"}})
+            mock_load.assert_called_once_with(reason="running local tool-result synthesis pass")
+            mock_gen_local.assert_called_once()
+            mock_unload.assert_called_once()
+
+
+
 
 
