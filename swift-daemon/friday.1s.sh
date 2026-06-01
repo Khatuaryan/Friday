@@ -45,12 +45,8 @@ case "$PRESSURE" in
     *)          MEM_COLOR="green" ;;
 esac
 
-# ── Menu bar display ─────────────────────────────────────────
-if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE" 2>/dev/null)" 2>/dev/null; then
-    echo "| $ICON_PARAM bash='touch $COMMAND_DIR/toggle_listening.cmd' terminal=false refresh=true"
-else
-    echo "| $ICON_PARAM bash='cd $FRIDAY_DIR && source .venv/bin/activate && nohup $VENV_PYTHON -m src.core >/dev/null 2>&1 &' terminal=false refresh=true"
-fi
+# ── Menu bar display (icon only — left-click opens dropdown) ──
+echo "| $ICON_PARAM"
 echo "---"
 
 # Status section
