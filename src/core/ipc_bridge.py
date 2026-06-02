@@ -137,8 +137,8 @@ class IPCBridge:
             return
 
         if command == "toggle_listening":
-            import signal as _signal
-            os.kill(os.getpid(), _signal.SIGUSR1)
+            logger.info("Manual activation triggered via IPC — queueing wake word")
+            self.handler._queue_wake_word()
 
         elif command == "stop":
             import signal as _signal

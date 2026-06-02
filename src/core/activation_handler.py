@@ -84,10 +84,15 @@ class ActivationHandler:
         self._stt = SpeechToText()
         self._tts = TextToSpeech()
 
-        # Initialize floating glowing overlay
-        from src.utils.overlay import FridayOverlay
-        self.overlay = FridayOverlay()
-        self.overlay.start()
+        # Initialize floating glowing overlay (skip if running under native Swift UI)
+        import os
+        if os.getenv("FRIDAY_NO_OVERLAY") == "1":
+            logger.info("Legacy Tkinter overlay disabled (running under native Swift UI)")
+            self.overlay = None
+        else:
+            from src.utils.overlay import FridayOverlay
+            self.overlay = FridayOverlay()
+            self.overlay.start()
 
         brain = None
         if self.load_brain:

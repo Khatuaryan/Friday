@@ -54,6 +54,7 @@ class DaemonManager: ObservableObject {
         // Provide standard macOS environment paths
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        env["FRIDAY_NO_OVERLAY"] = "1" // Disable legacy Tkinter overlay for native Swift UI
         proc.environment = env
         
         // Redirect stdout and stderr streams to log files
