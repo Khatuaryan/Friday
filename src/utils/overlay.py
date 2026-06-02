@@ -19,11 +19,17 @@ from __future__ import annotations
 import math
 import threading
 import time
-import tkinter as tk
 from pathlib import Path
 from src.utils.logger import get_logger
 
 logger = get_logger("friday.overlay")
+
+try:
+    import tkinter as tk
+    TK_AVAILABLE = True
+except (ImportError, ModuleNotFoundError):
+    tk = None
+    TK_AVAILABLE = False
 
 # ── Icon asset path (PNG reference for SwiftBar/docs) ────────
 ICON_PNG = Path(__file__).resolve().parent.parent.parent / "assets" / "friday-icon.png"
@@ -71,6 +77,9 @@ class FridayOverlay:
 
     def start(self) -> None:
         """Starts the overlay graphics thread (window stays hidden initially)."""
+        if not TK_AVAILABLE:
+            logger.warning("Tkinter is not available in this Python environment. Glowing overlay will be disabled.")
+            return
         if self._running:
             return
         self._running = True
