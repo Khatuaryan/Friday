@@ -5,6 +5,8 @@ class IPCBridge: ObservableObject {
     @Published var state: String = "offline"
     @Published var memoryPressure: String = "unknown"
     @Published var rssMB: Double = 0.0
+    @Published var lastCommand: String = ""
+    @Published var lastResponse: String = ""
     
     private var timer: Timer?
     private let statusURL: URL
@@ -38,6 +40,8 @@ class IPCBridge: ObservableObject {
                     self.state = json["state"] as? String ?? "ready"
                     self.rssMB = json["rss_mb"] as? Double ?? 0.0
                     self.memoryPressure = json["pressure"] as? String ?? "unknown"
+                    self.lastCommand = json["last_command"] as? String ?? ""
+                    self.lastResponse = json["last_response"] as? String ?? ""
                     
                     // Trigger physical trackpad click on activation transition
                     if self.state == "listening" && oldState != "listening" {

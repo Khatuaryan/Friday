@@ -4,18 +4,47 @@ import AppKit
 struct FloatingHUDWindow: View {
     @ObservedObject var ipc: IPCBridge
     
+    private var animationNameForState: String? {
+        switch ipc.state {
+        case "verifying", "ready":
+            return "listening"
+        case "processing":
+            return "thinking"
+        case "speaking":
+            return "responding"
+        default:
+            return nil
+        }
+    }
+    
+    private func useLottieAnimation(_ name: String) -> Bool {
+        return Bundle.main.path(forResource: name, ofType: "json") != nil
+    }
+    
     var body: some View {
-        VStack {
-            // Draw visualizer only when the core assistant is active
-            if ipc.state != "offline" && ipc.state != "idle" {
-                GlowingOrbView(ipc: ipc)
-                    .transition(.opacity.combined(with: .scale))
-                    .onTapGesture {
-                        // Let the boss trigger listening by clicking directly on the orb
-                        ipc.sendCommand("toggle_listening")
+        VStack(spacing: 0) {
+            if let animName = animationNameForState {
+                VStack(spacing: 12) {
+                    if useLottieAnimation(animName) {
+                        LottiePlayerView(animationName: animName)
+                            .frame(width: 160, height: 160)
+                            .transition(.opacity.combined(with: .scale))
+                    } else {
+                        GlowingOrbView(ipc: ipc)
+                            .transition(.opacity.combined(with: .scale))
                     }
+                    
+                    if !ipc.lastCommand.isEmpty || !ipc.lastResponse.isEmpty {
+                        ResponseBubbleView(command: ipc.lastCommand, response: ipc.lastResponse)
+                    }
+                }
+                .onTapGesture {
+                    ipc.sendCommand("toggle_listening")
+                }
+                .transition(.opacity.combined(with: .slide))
             }
         }
+        .frame(width: 280, height: 360, alignment: .top)
         .onAppear {
             configureAppKitWindow()
         }
@@ -39,10 +68,12 @@ struct FloatingHUDWindow: View {
         // Place in top-right area, directly underneath the macOS status bar
         if let screen = NSScreen.main {
             let screenFrame = screen.visibleFrame
-            let size: CGFloat = 160
-            let x = screenFrame.maxX - size - 16
-            let y = screenFrame.maxY - size - 16
-            window.setFrame(NSRect(x: x, y: y, width: size, height: size), display: true)
+            let width: CGFloat = 280
+            let height: CGFloat = 360
+            let x = screenFrame.maxX - width - 16
+            let y = screenFrame.maxY - height - 16
+            window.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)
         }
     }
 }
+

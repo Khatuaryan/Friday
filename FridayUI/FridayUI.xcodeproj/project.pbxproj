@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		045702F33E681866EF51069B /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 2E7C6581FFA97B29C4D2F115 /* Lottie */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		0762E73F2FCECF2F009081B2 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -66,6 +70,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				045702F33E681866EF51069B /* Lottie in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -154,6 +159,7 @@
 			);
 			name = FridayUIUITests;
 			packageProductDependencies = (
+				2E7C6581FFA97B29C4D2F115 /* Lottie */,
 			);
 			productName = FridayUIUITests;
 			productReference = 0762E7482FCECF2F009081B2 /* FridayUIUITests.xctest */;
@@ -191,6 +197,9 @@
 			);
 			mainGroup = 0762E7262FCECF2D009081B2;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				EDDA61BE84FC33064D15970E /* XCRemoteSwiftPackageReference "lottie-ios" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 0762E7302FCECF2D009081B2 /* Products */;
 			projectDirPath = "";
@@ -398,9 +407,9 @@
 				ENABLE_HARDENED_RUNTIME = NO;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "F.R.I.D.A.Y. uses your camera to confirm your identity via face recognition.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "F.R.I.D.A.Y. uses your microphone to listen for the wake word and respond to voice commands.";
-				INFOPLIST_KEY_NSCameraUsageDescription = "F.R.I.D.A.Y. uses your camera to confirm your identity via face recognition.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -431,9 +440,9 @@
 				ENABLE_HARDENED_RUNTIME = NO;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "F.R.I.D.A.Y. uses your camera to confirm your identity via face recognition.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "F.R.I.D.A.Y. uses your microphone to listen for the wake word and respond to voice commands.";
-				INFOPLIST_KEY_NSCameraUsageDescription = "F.R.I.D.A.Y. uses your camera to confirm your identity via face recognition.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -571,6 +580,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		EDDA61BE84FC33064D15970E /* XCRemoteSwiftPackageReference "lottie-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/airbnb/lottie-ios.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.4.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		2E7C6581FFA97B29C4D2F115 /* Lottie */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = EDDA61BE84FC33064D15970E /* XCRemoteSwiftPackageReference "lottie-ios" */;
+			productName = Lottie;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 0762E7272FCECF2D009081B2 /* Project object */;
 }

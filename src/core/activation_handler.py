@@ -4,6 +4,7 @@ import time
 import queue
 from enum import Enum
 from typing import Callable, Optional
+from src.core.context_manager import FollowUpContextManager
 
 logger = get_logger("friday.activation")
 
@@ -44,6 +45,7 @@ class ActivationHandler:
         self._lock = threading.Lock()
         self._event_queue = queue.Queue()
         self._running = False
+        self.context_manager = FollowUpContextManager()
 
         # Components
         self._wake_word = None
@@ -125,6 +127,10 @@ class ActivationHandler:
         self.ipc_bridge = IPCBridge(activation_handler=self)
         self.ipc_bridge.start()
 
+        # Inject references for real-time visualizer updates
+        self._voice_pipeline.ipc_bridge = self.ipc_bridge
+        self._voice_pipeline.activation_handler = self
+
         self._set_state(ActivationState.LISTENING)
         logger.info("Activation handler started — listening for wake word")
 
@@ -143,6 +149,29 @@ class ActivationHandler:
                         self._handle_activation()
                 except queue.Empty:
                     pass
+
+                # Check for smart follow-up activation
+                if (
+                    self._state == ActivationState.LISTENING
+                    and self.context_manager.is_followup_window_active()
+                ):
+                    try:
+                        # Short passive listen session
+                        logger.debug("Smart follow-up active listening...")
+                        listen_result = self._stt.listen(timeout=3.0)
+                        if isinstance(listen_result, tuple):
+                            transcript, detected_lang = listen_result
+                        else:
+                            transcript, detected_lang = listen_result, "en"
+
+                        if transcript and self.context_manager.is_followup_eligible(transcript):
+                            logger.info("🔥 Smart follow-up triggered: '%s'", transcript)
+                            self._show_notification("F.R.I.D.A.Y.", f"Follow-up: {transcript}")
+                            
+                            self._set_state(ActivationState.PROCESSING)
+                            self._handle_direct_voice_interaction(transcript)
+                    except Exception as e:
+                        logger.error("Smart follow-up passive listen failed: %s", e)
 
                 # Update the Tkinter overlay frame on the main thread if active
                 if hasattr(self, "overlay") and self.overlay:
@@ -250,15 +279,58 @@ class ActivationHandler:
             self._tts.speak("Hey Boss, how can I help?", blocking=True)
 
             self._set_state(ActivationState.PROCESSING)
-            response = self._voice_pipeline.process_voice_command(timeout=10)
+            result = self._voice_pipeline.process_voice_command(timeout=10, return_tuple=True)
+
+            if isinstance(result, tuple):
+                command, response = result
+            else:
+                command, response = None, result
 
             if response:
                 logger.info("Voice command completed successfully")
+                if command:
+                    self.context_manager.record_response(command, response)
             else:
+                self._set_state(ActivationState.SPEAKING)
                 self._tts.speak("I didn't hear anything.", blocking=True)
 
         except Exception:
             logger.exception("Voice interaction failed")
+
+        self._set_state(ActivationState.LISTENING)
+
+    def _handle_direct_voice_interaction(self, transcript: str) -> None:
+        """Run the voice pipeline directly with pre-transcribed text (Executed on Main Thread)."""
+        if not self._voice_pipeline:
+            self._set_state(ActivationState.LISTENING)
+            return
+
+        try:
+            if self._tts:
+                self._tts.reset_preempt()
+
+            self._set_state(ActivationState.PROCESSING)
+            result = self._voice_pipeline.process_voice_command(
+                timeout=10,
+                return_tuple=True,
+                pre_transcribed_command=transcript
+            )
+
+            if isinstance(result, tuple):
+                command, response = result
+            else:
+                command, response = None, result
+
+            if response:
+                logger.info("Voice command completed successfully")
+                if command:
+                    self.context_manager.record_response(command, response)
+            else:
+                self._set_state(ActivationState.SPEAKING)
+                self._tts.speak("I didn't hear anything.", blocking=True)
+
+        except Exception:
+            logger.exception("Direct voice interaction failed")
 
         self._set_state(ActivationState.LISTENING)
 

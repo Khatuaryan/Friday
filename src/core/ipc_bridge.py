@@ -46,6 +46,8 @@ class IPCBridge:
         self.handler = activation_handler
         self._running = False
         self._thread: threading.Thread | None = None
+        self.last_command: str = ""
+        self.last_response: str = ""
 
         # Ensure directories exist
         STATUS_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -103,6 +105,8 @@ class IPCBridge:
             "rss_mb": round(rss_mb, 1),
             "pressure": pressure,
             "pid": os.getpid(),
+            "last_command": self.last_command,
+            "last_response": self.last_response,
         }
         if extra:
             payload.update(extra)
@@ -111,6 +115,19 @@ class IPCBridge:
             STATUS_FILE.write_text(json.dumps(payload))
         except Exception as e:
             logger.debug("IPC write failed: %s", e)
+
+    def update_text(self, last_command: str | None = None, last_response: str | None = None) -> None:
+        """
+        Update last command and/or response text in bridge state.
+        
+        Args:
+            last_command: Transcribed command text from user.
+            last_response: Assistant's response text.
+        """
+        if last_command is not None:
+            self.last_command = last_command
+        if last_response is not None:
+            self.last_response = last_response
 
     def _command_poll_loop(self):
         """Poll command directory every 0.5 seconds."""
