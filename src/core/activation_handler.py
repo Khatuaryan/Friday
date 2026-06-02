@@ -166,7 +166,6 @@ class ActivationHandler:
 
                         if transcript and self.context_manager.is_followup_eligible(transcript):
                             logger.info("🔥 Smart follow-up triggered: '%s'", transcript)
-                            self._show_notification("F.R.I.D.A.Y.", f"Follow-up: {transcript}")
                             
                             self._set_state(ActivationState.PROCESSING)
                             self._handle_direct_voice_interaction(transcript)
@@ -220,9 +219,6 @@ class ActivationHandler:
         if self._tts and self._tts.is_speaking:
             logger.info("Preempting proactive TTS for wake word activation")
             self._tts.stop()
-        
-        # Show a notification for visual feedback
-        self._show_notification("F.R.I.D.A.Y.", "Wake word detected. Verifying identity...")
 
         # If face verification is disabled, skip straight to READY
         if self.skip_face_verification:
@@ -242,7 +238,6 @@ class ActivationHandler:
             if identity == "boss":
                 logger.info("✅ Boss verified in %.2fs", latency)
                 self._set_state(ActivationState.READY)
-                self._show_notification("F.R.I.D.A.Y.", "Identity verified. Listening...")
                 
                 # Fire user callback (in thread to avoid blocking main loop if user is slow)
                 threading.Thread(target=self.on_boss_verified, daemon=True).start()
@@ -333,11 +328,6 @@ class ActivationHandler:
             logger.exception("Direct voice interaction failed")
 
         self._set_state(ActivationState.LISTENING)
-
-    def _show_notification(self, title: str, message: str) -> None:
-        """Show a macOS system notification for visual feedback."""
-        import os
-        os.system(f"osascript -e 'display notification \"{message}\" with title \"{title}\"'")
 
     def _set_state(self, new_state: ActivationState | str) -> None:
         """Update state with logging and IPC bridge notification."""
