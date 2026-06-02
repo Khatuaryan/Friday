@@ -339,19 +339,27 @@ class ActivationHandler:
         import os
         os.system(f"osascript -e 'display notification \"{message}\" with title \"{title}\"'")
 
-    def _set_state(self, new_state: ActivationState) -> None:
+    def _set_state(self, new_state: ActivationState | str) -> None:
         """Update state with logging and IPC bridge notification."""
+        if isinstance(new_state, str) and not isinstance(new_state, ActivationState):
+            try:
+                new_state = ActivationState(new_state)
+            except ValueError:
+                pass
+
         old = self._state
         self._state = new_state
         if old != new_state:
-            logger.debug("State: %s → %s", old.value, new_state.value)
+            old_val = old.value if hasattr(old, "value") else str(old)
+            new_val = new_state.value if hasattr(new_state, "value") else str(new_state)
+            logger.debug("State: %s → %s", old_val, new_val)
             if self.ipc_bridge:
-                self.ipc_bridge.write_status(new_state.value)
+                self.ipc_bridge.write_status(new_val)
             
             # Control overlay visibility and colors based on state
             if hasattr(self, "overlay") and self.overlay:
                 if new_state in (ActivationState.VERIFYING, ActivationState.READY, ActivationState.PROCESSING, ActivationState.SPEAKING):
-                    self.overlay.show(new_state.value)
+                    self.overlay.show(new_val)
                 else:
                     self.overlay.hide()
 
