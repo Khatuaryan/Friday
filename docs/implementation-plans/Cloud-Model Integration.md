@@ -10,7 +10,7 @@ This plan integrates the **OpenRouter API** into F.R.I.D.A.Y.'s brain module, ro
 ## User Review Required
 
 > [!IMPORTANT]
-> - **API Credentials**: The integration will use the OpenRouter API key provided: `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`. We will support loading this key from both the `OPENROUTER_API_KEY` environment variable and `config/friday_config.yaml`.
+> - **API Credentials**: The integration will support loading the OpenRouter API key from both the `OPENROUTER_API_KEY` environment variable and `config/friday_config.yaml`.
 > - **Lightweight `httpx` Network Client**: To keep the repository clean and avoid heavy package bloat (such as the full OpenAI or OpenRouter SDKs), we will implement a fast, robust HTTP connection using python's standard `httpx` library (which is already a core project dependency).
 > - **RAG & Telemetry Preserved**: Even though inference is offloaded to the cloud, F.R.I.D.A.Y.'s local context tracker, SQLite-vec semantic memory store, and proactive engines will continue to run locally exactly as designed.
 
