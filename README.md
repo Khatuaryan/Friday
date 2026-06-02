@@ -93,7 +93,7 @@ flowchart TD
 │   ├── proactive/           # Background scheduling & system reminders
 │   ├── tools/               # EventKit, AppKit, Shell, System MCP tools
 │   └── utils/               # Centralized constants, Pydantic configs, and overlay
-├── swift-daemon/            # SwiftBar dynamic plugin script
+├── FridayUI/                # Custom standalone native macOS SwiftUI App
 └── tests/                   # Extensive test suites (unit & integration)
 ```
 
@@ -103,7 +103,7 @@ flowchart TD
 
 *   **Hardware**: Apple Silicon Mac (M1, M2, M3, M4 series) with a minimum of **8 GB RAM**.
 *   **Operating System**: macOS Ventura (13.0) or higher.
-*   **Software**: Python 3.11 (installed via Homebrew) and SwiftBar.
+*   **Software**: Python 3.11 (installed via Homebrew) and Xcode 16+ (for compiling the native App).
 
 ### 🚀 Quick Start Installation
 
@@ -181,16 +181,16 @@ make test-brain                # Integration test: Loads LLM, injects context, t
 
 ---
 
-## 🖥️ System Integration (SwiftBar & launchd)
+## 🖥️ System Integration (FridayUI & launchd)
 
-### 🟢 Real-time Menu Bar App (SwiftBar)
-F.R.I.D.A.Y. is integrated directly with the macOS menu bar via a customized **SwiftBar** script. It reads a dynamic state bridge written on every python activation step (`~/.cache/friday/status.json`) to display real-time statuses and diagnostics in the menu bar:
+### 🟢 Standalone Menu Bar App (FridayUI)
+F.R.I.D.A.Y. is integrated directly with the macOS system layer via a custom compiled **FridayUI** SwiftUI application. It utilizes a file-based IPC state bridge (`~/.cache/friday/status.json`) to display real-time statuses and diagnostics in the menu bar:
 
-*   ⚫ **Offline**: F.R.I.D.A.Y. daemon is not running (includes "Click to Start" button).
+*   ⚫ **Offline**: F.R.I.D.A.Y. daemon is not running (includes "Boot Core" toggle).
 *   🟢 **Idle**: Listening for wake word (`Hey Mycroft`).
 *   🔵 **Verifying**: FaceTime camera biometric check is active.
-*   🟡 **Processing**: Transcribing, language detecting, or cloud reasoning.
-*   🔊 **Speaking**: TTS output is playing.
+*   🟣 **Processing**: Transcribing, language detecting, or cloud reasoning.
+*   🔴 **Speaking**: TTS output is playing.
 
 ### 🚀 Auto-start on System Login (`launchd`)
 Install F.R.I.D.A.Y. as a persistent macOS user agent:

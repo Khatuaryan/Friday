@@ -31,7 +31,7 @@ except (ImportError, ModuleNotFoundError):
     tk = None
     TK_AVAILABLE = False
 
-# ── Icon asset path (PNG reference for SwiftBar/docs) ────────
+# ── Icon asset path (PNG reference for FridayUI/docs) ────────
 ICON_PNG = Path(__file__).resolve().parent.parent.parent / "assets" / "friday-icon.png"
 
 # ── State color profiles ─────────────────────────────────────

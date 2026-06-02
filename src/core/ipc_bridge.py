@@ -1,9 +1,9 @@
 """
-IPC State Bridge — File-based communication between Python core and SwiftBar menu bar.
+IPC State Bridge — File-based communication between Python core and FridayUI native macOS App.
 
 Design:
-    Python → SwiftBar:  Writes ~/.cache/friday/status.json on every ActivationState change.
-    SwiftBar → Python:  Creates .cmd marker files in ~/.cache/friday/commands/.
+    Python → FridayUI:  Writes ~/.cache/friday/status.json on every ActivationState change.
+    FridayUI → Python:  Creates .cmd marker files in ~/.cache/friday/commands/.
                         A daemon thread polls this directory every 0.5s, processes commands,
                         and deletes the marker files.
 
@@ -30,10 +30,10 @@ PID_FILE = Path("~/.cache/friday/friday.pid").expanduser()
 
 class IPCBridge:
     """
-    File-based IPC bridge between Python core and SwiftBar menu bar.
+    File-based IPC bridge between Python core and FridayUI native macOS App.
 
-    Python → SwiftBar: writes status.json on every state change
-    SwiftBar → Python: creates command files, Python polls and deletes them
+    Python → FridayUI: writes status.json on every state change
+    FridayUI → Python: creates command files, Python polls and deletes them
     """
 
     VALID_COMMANDS = {
@@ -53,7 +53,7 @@ class IPCBridge:
 
     def start(self):
         """Start command polling thread and write PID."""
-        # Write PID file for SwiftBar to send signals
+        # Write PID file for FridayUI to send signals
         PID_FILE.write_text(str(os.getpid()))
 
         self._running = True
