@@ -132,12 +132,16 @@ class ActivationHandler:
         try:
             while self._running:
                 try:
-                    # Non-blocking check for events
-                    event = self._event_queue.get(timeout=0.1)
+                    # Non-blocking check for events with small timeout to allow smooth UI updates
+                    event = self._event_queue.get(timeout=0.02)
                     if event == "wake_word":
                         self._handle_activation()
                 except queue.Empty:
-                    continue
+                    pass
+
+                # Update the Tkinter overlay frame on the main thread if active
+                if hasattr(self, "overlay") and self.overlay:
+                    self.overlay.update()
         except KeyboardInterrupt:
             self.stop()
 

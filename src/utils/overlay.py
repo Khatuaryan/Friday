@@ -66,7 +66,6 @@ class FridayOverlay:
     def __init__(self) -> None:
         self._root: tk.Tk | None = None
         self._canvas: tk.Canvas | None = None
-        self._thread: threading.Thread | None = None
         self._running = False
         self._visible = False
         self._state = "ready"
@@ -76,18 +75,15 @@ class FridayOverlay:
     # ── Public API ───────────────────────────────────────────
 
     def start(self) -> None:
-        """Starts the overlay graphics thread (window stays hidden initially)."""
+        """Starts the overlay graphics (instantiates Tkinter on the main thread)."""
         if not TK_AVAILABLE:
             logger.warning("Tkinter is not available in this Python environment. Glowing overlay will be disabled.")
             return
         if self._running:
             return
         self._running = True
-        self._thread = threading.Thread(
-            target=self._run_window, daemon=True, name="friday-overlay"
-        )
-        self._thread.start()
-        logger.info("Overlay engine initialized.")
+        self._init_window()
+        logger.info("Overlay engine initialized on the main thread.")
 
     def stop(self) -> None:
         """Stops the overlay completely."""
@@ -95,7 +91,8 @@ class FridayOverlay:
         self._visible = False
         if self._root:
             try:
-                self._root.quit()
+                self._root.destroy()
+                self._root = None
             except Exception:
                 pass
 
@@ -124,7 +121,7 @@ class FridayOverlay:
         else:
             self._root.withdraw()
 
-    def _run_window(self) -> None:
+    def _init_window(self) -> None:
         try:
             self._root = tk.Tk()
             self._root.overrideredirect(True)
@@ -146,19 +143,41 @@ class FridayOverlay:
             )
             self._canvas.pack()
 
-            # Start animation loop
-            self._animate()
-
             # Hide initially
             self._root.withdraw()
 
-            self._root.mainloop()
+            # Process initial window events
+            self._root.update_idletasks()
+            self._root.update()
         except Exception as e:
-            logger.error(f"Overlay window crashed: {e}")
+            logger.error(f"Failed to initialize overlay window: {e}")
+            self._running = False
+
+    def update(self) -> None:
+        """Called periodically from the main thread loop to update graphics and process events."""
+        if not self._running or not self._root:
+            return
+
+        try:
+            now = time.time()
+            if not hasattr(self, "_last_frame_time"):
+                self._last_frame_time = 0.0
+
+            # ~40 FPS = 25ms interval
+            if now - self._last_frame_time >= (FRAME_MS / 1000.0):
+                self._last_frame_time = now
+                self._animate_frame()
+
+            # Process pending Tkinter events (non-blocking)
+            self._root.update_idletasks()
+            self._root.update()
+        except Exception as e:
+            logger.error(f"Overlay update failed: {e}")
+            self._running = False
 
     # ── Internal: animation engine ───────────────────────────
 
-    def _animate(self) -> None:
+    def _animate_frame(self) -> None:
         if not self._root or not self._canvas or not self._running:
             return
 
@@ -192,8 +211,6 @@ class FridayOverlay:
 
             # Layer 5: Dense convergence core
             self._draw_core(pulse, core)
-
-        self._root.after(FRAME_MS, self._animate)
 
     # ── Drawing primitives ───────────────────────────────────
 
