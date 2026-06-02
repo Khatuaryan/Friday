@@ -22,7 +22,7 @@ Through interactive system tools, F.R.I.D.A.Y. manages your calendar, checks mac
 
 *   **Premium F.R.I.D.A.Y. Persona**: Beautifully witty, conversational, and hyper-cognizant. Adapts to Hindi or English seamlessly and anticipates what the "Boss" needs next.
 *   **Sub-Second Voice Latency**: Streams spoken replies sentence-by-sentence as they generate (`blocking=False` in `speak()`), reducing perceived voice latency to **under 1 second**.
-*   **Glowing  Neon Orb**: A transparent, floating Tkinter circular visualizer that appears in the top-right of your screen on activation. Concentric translucent neon circles pulse dynamically based on transcription, processing, and speaking audio amplitudes.
+*   **Glowing Neon Orb**: A premium, transparent, floating circular visualizer rendered dynamically in native SwiftUI (or falling back to a legacy Tkinter visualizer when running standalone). It features procedural, hardware-accelerated volumetric depth, animating radial gradients, high-frequency rotations, and dynamic breath-cycle pulses modulated by transcription, processing, and speaking states.
 *   **OpenRouter Paid Gemma 4 Loop**: Routes reasoning queries directly to the paid-tier `google/gemma-4-31b-it` model on OpenRouter, ensuring rock-solid responses and immunity to free-tier `429 Too Many Requests` rate limiting.
 *   **Bilingual Auto-Detected Speech Routing**: Automatically detects the user's spoken language. If Hindi (`hi`) is detected, it instantly routes the audio bytes to the premium **Sarvam AI STT API** for high-precision Hindi script transcription, falling back to local multilingual Whisper if offline.
 *   **Speedy Programmatic Synthesis**: Bypasses local Phi inference for tool calls using a witty, programmatic F.R.I.D.A.Y. synthesizer in Python, bringing tool-execution voice latency to **0ms** after tool execution.
@@ -44,7 +44,7 @@ F.R.I.D.A.Y. loads models lazily and garbage collects them when idle to respect 
 | **Wake Word Detector** | OpenWakeWord (ONNX model) | `~0.05 GB` | CPU (ONNXRuntime quantized) |
 | **Facial Verification** | macOS Vision Framework | `0 MB` | OS Resident CoreML Model |
 | **Semantic Vector DB** | `sqlite-vec` + ONNX MiniLM | `~0.08 GB` | SQLite virtual table / CPU |
-| **Visualizer HUD** | transparent Tkinter overlay | `<0.02 GB` | Background Main GUI Thread |
+| **Visualizer HUD** | Standalone Native SwiftUI HUD | `<0.02 GB` | Hardware-accelerated GPU Rendering |
 | **Total Resident Space** | | **`~0.85 GB`**| *Leaves 7+ GB free system space when idle* |
 
 ### 🔄 Interactive Voice Pipeline Flow
@@ -184,9 +184,9 @@ make test-brain                # Integration test: Loads LLM, injects context, t
 ## 🖥️ System Integration (FridayUI & launchd)
 
 ### 🟢 Standalone Menu Bar App (FridayUI)
-F.R.I.D.A.Y. is integrated directly with the macOS system layer via a custom compiled **FridayUI** SwiftUI application. It utilizes a file-based IPC state bridge (`~/.cache/friday/status.json`) to display real-time statuses and diagnostics in the menu bar:
+F.R.I.D.A.Y. is integrated directly with the macOS system layer via a custom compiled native **FridayUI** SwiftUI application. It utilizes a file-based IPC state bridge (`~/.cache/friday/status.json`) to display real-time statuses and diagnostics in the menu bar and render a gorgeous floating visualizer HUD:
 
-*   ⚫ **Offline**: F.R.I.D.A.Y. daemon is not running (includes "Boot Core" toggle).
+*   ⚫ **Offline**: F.R.I.D.A.Y. daemon is not running (automatically boots the core on launch and cleanly stops it on app termination via native `AppDelegate` lifecycle hooks).
 *   🟢 **Idle**: Listening for wake word (`Hey Mycroft`).
 *   🔵 **Verifying**: FaceTime camera biometric check is active.
 *   🟣 **Processing**: Transcribing, language detecting, or cloud reasoning.
