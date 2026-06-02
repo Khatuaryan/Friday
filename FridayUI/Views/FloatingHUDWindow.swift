@@ -45,16 +45,13 @@ struct FloatingHUDWindow: View {
             }
         }
         .frame(width: 280, height: 360, alignment: .top)
-        .onAppear {
-            configureAppKitWindow()
-        }
+        .background(WindowConfigurator { window in
+            configureAppKitWindow(window)
+        })
     }
     
     /// Directly configures the window layer to have borderless and transparent styles
-    private func configureAppKitWindow() {
-        // Retrieve standard window handler
-        guard let window = NSApplication.shared.windows.first(where: { $0.title == "FridayUI" }) else { return }
-        
+    private func configureAppKitWindow(_ window: NSWindow) {
         // Remove standard borders, make background transparent
         window.backgroundColor = .clear
         window.isOpaque = false
@@ -63,7 +60,7 @@ struct FloatingHUDWindow: View {
         
         // Layering overlays: float above all applications and on full screen views
         window.level = .statusBar
-        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         
         // Place in top-right area, directly underneath the macOS status bar
         if let screen = NSScreen.main {
@@ -74,6 +71,31 @@ struct FloatingHUDWindow: View {
             let y = screenFrame.maxY - height - 16
             window.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)
         }
+        
+        // Force the window to be frontmost above all apps and screens
+        window.orderFrontRegardless()
     }
 }
+
+/// Helper representable to dynamically fetch and configure the AppKit hosting window
+struct WindowConfigurator: NSViewRepresentable {
+    let configure: (NSWindow) -> Void
+    
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            if let window = view.window {
+                configure(window)
+            }
+        }
+        return view
+    }
+    
+    func updateNSView(_ nsView: NSView, context: Context) {
+        if let window = nsView.window {
+            configure(window)
+        }
+    }
+}
+
 

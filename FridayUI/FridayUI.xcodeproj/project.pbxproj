@@ -56,6 +56,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				045702F33E681866EF51069B /* Lottie in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -119,6 +120,7 @@
 			);
 			name = FridayUI;
 			packageProductDependencies = (
+				2E7C6581FFA97B29C4D2F115 /* Lottie */,
 			);
 			productName = FridayUI;
 			productReference = 0762E72F2FCECF2D009081B2 /* FridayUI.app */;
