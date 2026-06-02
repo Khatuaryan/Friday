@@ -7,9 +7,9 @@ We have successfully implemented and verified all three core pillars of the Phas
 ## 🚀 Key Accomplishments
 
 ### 1. Unified Lottie UI Integration
-* **Package Installed**: Integrated the modern `airbnb/lottie-ios` (v4.4.0) library into `FridayUI.xcodeproj` using Swift Package Manager securely.
-* **Frictionless Sync**: Copied `listening.json`, `thinking.json`, and `responding.json` to `FridayUI/App/animations` so Xcode compiles them directly as bundle resources using the folder sync root feature.
-* **Lottie Player View**: Built `LottiePlayerView.swift` wrapping the player in a native `NSViewRepresentable`.
+* **Package Installed & Linked**: Integrated the modern `airbnb/lottie-ios` (v4.4.0) library into `FridayUI.xcodeproj` using Swift Package Manager, linking it securely to the `FridayUI` target and configuring build frameworks.
+* **Frictionless Sync**: Placed the Lottie resources inside `FridayUI/App/animations` so Xcode compiles them directly as bundle resources using the folder sync root feature.
+* **Coordinator Pattern Player**: Built `LottiePlayerView.swift` implementing an `NSViewRepresentable` with a Swift `Coordinator` to safely track, swap, and play active Lottie animations compiler-safely.
 * **Orb Fallback**: Retained the high-fidelity `GlowingOrbView` as an automatic structural fallback if any Lottie animation file is ever deleted or missing at runtime.
 * **HUD Window Redesign**: Bounded and resized the transparent HUD window to `280x360` to accommodate both animations and responses cleanly.
 
@@ -21,6 +21,7 @@ We have successfully implemented and verified all three core pillars of the Phas
 ### 3. Smart Follow-Up Context Manager
 * **FollowUpContextManager**: Developed `context_manager.py` with custom J.A.R.V.I.S. continuation word filters, ambient speech Jaccard word-overlap calculations, and Indian/English address filtering to bypass wake words.
 * **Passive Listening Check**: Programmed a VAD-based continuous check in `activation_handler.py` `run_loop()`. If ambient speech is caught within 15 seconds of a previous command completing, it validates the request and processes it directly, bypassing double-prompting.
+* **Eliminated macOS Alerts**: Completely removed all redundant, disruptive `display notification` system alerts across `activation_handler.py` to yield a perfectly clean background process UX entirely driven by the floating overlay HUD.
 
 ---
 

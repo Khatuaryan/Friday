@@ -61,9 +61,9 @@ The animations are designed in SVGator and exported as Lottie JSON with the foll
 
 The files are located at:
 ```
-assets/animations/listening.json
-assets/animations/thinking.json
-assets/animations/responding.json
+FridayUI/App/animations/listening.json
+FridayUI/App/animations/thinking.json
+FridayUI/App/animations/responding.json
 ```
 
 ### Why Lottie over GIF
@@ -92,21 +92,30 @@ import Lottie
 
 struct LottiePlayerView: NSViewRepresentable {
     let animationName: String   // e.g. "listening", "thinking", "responding"
-    let loopMode: LottieLoopMode = .loop
+    var loopMode: LottieLoopMode = .loop
+    
+    class Coordinator {
+        var currentAnimationName: String?
+    }
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
     
     func makeNSView(context: Context) -> LottieAnimationView {
-        let view = LottieAnimationView(name: animationName,
-                                        bundle: .main)
+        let view = LottieAnimationView(name: animationName, bundle: .main)
         view.loopMode = loopMode
         view.contentMode = .scaleAspectFit
         view.backgroundBehavior = .pauseAndRestore
         view.play()
+        context.coordinator.currentAnimationName = animationName
         return view
     }
     
     func updateNSView(_ nsView: LottieAnimationView, context: Context) {
-        // If the animation name changed (state transition), swap the animation
-        if nsView.animation?.name != animationName {
+        // If the animation name changed (state transition), swap the animation compiler-safely
+        if context.coordinator.currentAnimationName != animationName {
+            context.coordinator.currentAnimationName = animationName
             nsView.animation = LottieAnimation.named(animationName, bundle: .main)
             nsView.play()
         }
@@ -120,7 +129,8 @@ struct LottiePlayerView: NSViewRepresentable {
 - The window size should expand to accommodate both the animation (top) and the response text bubble (bottom). Suggested new window size: `width: 280, height: 360`.
 - Keep `window.level = .statusBar` and `.canJoinAllSpaces` behaviors.
 - Use `withAnimation(.easeInOut(duration: 0.3))` wrapping state transitions for smooth appearance/disappearance.
-- Copy the `.json` files into the Xcode project's bundle resources (drag into `FridayUI/App/Assets.xcassets` or add as bundle resources in Build Phases → Copy Bundle Resources).
+- Copy the `.json` files into the Xcode project's bundle resources under `FridayUI/App/animations` so Xcode synchronizes them automatically.
+- **Removed macOS System Alerts**: Eliminated all redundant, disruptive `display notification` system popups across `activation_handler.py` to yield a clean, premium background process UX entirely driven by the floating overlay HUD.
 
 ---
 
@@ -267,10 +277,10 @@ The user is aware of the current latency between command and response. Here are 
 | `src/core/activation_handler.py` | Modify | Integrate follow-up context manager; pass texts to IPC |
 | `src/modules/voice_pipeline.py` | Modify | Return `(command, response)` tuple instead of just response |
 | `src/core/context_manager.py` | **New** | `FollowUpContextManager` class |
-| `assets/animations/listening.json` | **New** | Lottie animation for listening/verifying state |
-| `assets/animations/thinking.json` | **New** | Lottie animation for processing state |
-| `assets/animations/responding.json` | **New** | Lottie animation for speaking state |
-| `FridayUI.xcodeproj` | Modify | Add lottie-ios SPM dependency + bundle resources |
+| `FridayUI/App/animations/listening.json` | **New** | Lottie animation resource for listening/verifying state |
+| `FridayUI/App/animations/thinking.json` | **New** | Lottie animation resource for processing state |
+| `FridayUI/App/animations/responding.json` | **New** | Lottie animation resource for speaking state |
+| `FridayUI.xcodeproj` | Modify | Add lottie-ios SPM dependency + package linking |
 
 ---
 
