@@ -27,10 +27,11 @@ struct FloatingHUDWindow: View {
                 VStack(spacing: 12) {
                     if useLottieAnimation(animName) {
                         LottiePlayerView(animationName: animName)
-                            .frame(width: 160, height: 160)
+                            .frame(width: 120, height: 120)
                             .transition(.opacity.combined(with: .scale))
                     } else {
                         GlowingOrbView(ipc: ipc)
+                            .frame(width: 120, height: 120)
                             .transition(.opacity.combined(with: .scale))
                     }
                     
@@ -44,7 +45,7 @@ struct FloatingHUDWindow: View {
                 .transition(.opacity.combined(with: .slide))
             }
         }
-        .frame(width: 280, height: 360, alignment: .top)
+        .frame(width: 240, height: 320, alignment: .top)
         .onChange(of: ipc.state) { oldValue, newValue in
             updateMouseEvents(for: newValue)
         }

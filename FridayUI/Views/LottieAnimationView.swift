@@ -18,6 +18,11 @@ struct LottiePlayerView: NSViewRepresentable {
         view.loopMode = loopMode
         view.contentMode = .scaleAspectFit
         view.backgroundBehavior = .pauseAndRestore
+        
+        // Ensure transparency in AppKit
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor.clear.cgColor
+        
         view.play()
         context.coordinator.currentAnimationName = animationName
         return view

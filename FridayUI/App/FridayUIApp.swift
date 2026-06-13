@@ -25,7 +25,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard hudPanel == nil else { return }
         
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 280, height: 360),
+            contentRect: NSRect(x: 0, y: 0, width: 240, height: 320),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -43,9 +43,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Position at top-center of the screen
         if let screen = NSScreen.main {
             let screenFrame = screen.visibleFrame
-            let x = screenFrame.midX - 140
-            let y = screenFrame.maxY - 360 - 8
-            panel.setFrame(NSRect(x: x, y: y, width: 280, height: 360), display: true)
+            let x = screenFrame.midX - 120
+            let y = screenFrame.maxY - 320 - 8
+            panel.setFrame(NSRect(x: x, y: y, width: 240, height: 320), display: true)
         }
         
         panel.orderFrontRegardless()

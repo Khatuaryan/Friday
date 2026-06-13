@@ -65,7 +65,7 @@ struct GlowingOrbView: View {
                 ))
                 .scaleEffect(pulseScale3)
         }
-        .frame(width: 140, height: 140)
+        .frame(width: 120, height: 120)
         .onAppear {
             withAnimation(.linear(duration: 4).repeatForever(autoreverses: false)) {
                 rotation = 360.0
