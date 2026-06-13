@@ -60,17 +60,6 @@ struct MenuDropdownView: View {
         .frame(width: 220)
         .onAppear {
             daemon.checkStatus()
-            requestPermissions()
-        }
-    }
-    
-    /// Requests native microphone and camera permissions on startup to trigger macOS permission overlays
-    private func requestPermissions() {
-        AVCaptureDevice.requestAccess(for: .audio) { granted in
-            print("Microphone permission granted: \(granted)")
-        }
-        AVCaptureDevice.requestAccess(for: .video) { granted in
-            print("Camera permission granted: \(granted)")
         }
     }
 }

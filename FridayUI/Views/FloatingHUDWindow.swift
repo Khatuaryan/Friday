@@ -45,55 +45,19 @@ struct FloatingHUDWindow: View {
             }
         }
         .frame(width: 280, height: 360, alignment: .top)
-        .background(WindowConfigurator { window in
-            configureAppKitWindow(window)
-        })
-    }
-    
-    /// Directly configures the window layer to have borderless and transparent styles
-    private func configureAppKitWindow(_ window: NSWindow) {
-        // Remove standard borders, make background transparent
-        window.backgroundColor = .clear
-        window.isOpaque = false
-        window.hasShadow = false
-        window.styleMask = [.borderless]
-        
-        // Layering overlays: float above all applications and on full screen views
-        window.level = .statusBar
-        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
-        
-        // Place in top-right area, directly underneath the macOS status bar
-        if let screen = NSScreen.main {
-            let screenFrame = screen.visibleFrame
-            let width: CGFloat = 280
-            let height: CGFloat = 360
-            let x = screenFrame.maxX - width - 16
-            let y = screenFrame.maxY - height - 16
-            window.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)
+        .onChange(of: ipc.state) { newState in
+            updateMouseEvents(for: newState)
         }
-        
-        // Force the window to be frontmost above all apps and screens
-        window.orderFrontRegardless()
-    }
-}
-
-/// Helper representable to dynamically fetch and configure the AppKit hosting window
-struct WindowConfigurator: NSViewRepresentable {
-    let configure: (NSWindow) -> Void
-    
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        DispatchQueue.main.async {
-            if let window = view.window {
-                configure(window)
-            }
+        .onAppear {
+            updateMouseEvents(for: ipc.state)
         }
-        return view
     }
     
-    func updateNSView(_ nsView: NSView, context: Context) {
-        if let window = nsView.window {
-            configure(window)
+    private func updateMouseEvents(for state: String) {
+        let hasActiveAnimation = (state == "verifying" || state == "ready" || state == "processing" || state == "speaking")
+        if let delegate = NSApplication.shared.delegate as? AppDelegate,
+           let panel = delegate.hudPanel {
+            panel.ignoresMouseEvents = !hasActiveAnimation
         }
     }
 }

@@ -78,6 +78,7 @@ class SpeechToText:
         self,
         timeout: float = 10.0,
         silence_duration: float = 1.5,
+        abort_event: Optional[threading.Event] = None,
     ) -> Tuple[str, str]:
         """
         Record audio until silence detected or timeout, then transcribe.
@@ -85,6 +86,7 @@ class SpeechToText:
         Args:
             timeout: Maximum recording duration (seconds).
             silence_duration: Seconds of continuous silence to auto-stop.
+            abort_event: Optional Event to abort recording early.
 
         Returns:
             Tuple of (Transcribed text, detected_language), or ("", "en") if no speech detected.
@@ -123,6 +125,10 @@ class SpeechToText:
             nonlocal consecutive_silence
 
             while not stop_event.is_set():
+                if abort_event and abort_event.is_set():
+                    stop_event.set()
+                    break
+
                 try:
                     chunk = self._audio_queue.get(timeout=0.1)
                 except queue.Empty:
@@ -177,8 +183,17 @@ class SpeechToText:
 
         logger.info("🎙️ Listening (timeout=%.1fs, silence=%.1fs)...", timeout, silence_duration)
 
-        # Wait for stop_event or timeout
-        stop_event.wait(timeout=timeout)
+        # Wait for stop_event or timeout, checking abort_event periodically
+        step = 0.1
+        elapsed = 0.0
+        while elapsed < timeout:
+            if stop_event.wait(timeout=step):
+                break
+            if abort_event and abort_event.is_set():
+                stop_event.set()
+                break
+            elapsed += step
+
         if not stop_event.is_set():
             logger.info("Recording timeout reached (%.1fs)", timeout)
             stop_event.set()
@@ -192,6 +207,10 @@ class SpeechToText:
             pass
         pa.terminate()
         worker.join(timeout=2.0)
+
+        if abort_event and abort_event.is_set():
+            logger.info("Speech capture aborted.")
+            return "", "en"
 
         # Drain remaining queue items
         while not self._audio_queue.empty():

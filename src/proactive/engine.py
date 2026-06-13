@@ -65,8 +65,13 @@ class ProactiveEngine:
         return state.value not in ("idle", "listening")
 
     def _show_notification(self, title: str, message: str):
-        """Show macOS notification (always safe, no audio contention)."""
-        os.system(f"osascript -e 'display notification \"{message}\" with title \"{title}\"'")
+        """Route notification through IPC to Swift HUD instead of macOS alerts."""
+        if self.activation_handler and self.activation_handler.ipc_bridge:
+            self.activation_handler.ipc_bridge.update_text(
+                last_command="", last_response=f"[{title}] {message}"
+            )
+            self.activation_handler.ipc_bridge.write_status("speaking")
+        logger.info("Proactive notification: %s — %s", title, message)
 
     def _speak(self, text: str, notification_title: str = "F.R.I.D.A.Y.",
                notification_msg: str = ""):

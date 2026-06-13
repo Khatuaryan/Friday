@@ -1,6 +1,7 @@
 import Cocoa
 import ApplicationServices
 
+// Note: This file is currently unused but reserved for future implementation of application-specific context reading.
 class SystemContextReader {
     
     /// Inspects the frontmost application window and retrieves selected text or tab context

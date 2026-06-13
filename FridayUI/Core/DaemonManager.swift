@@ -38,7 +38,24 @@ class DaemonManager: ObservableObject {
     
     /// Spawns the background Python daemon and redirects log handles
     func startDaemon() {
-        checkStatus()
+        // Clean stale PID if process is dead
+        if FileManager.default.fileExists(atPath: pidFileURL.path),
+           let pidString = try? String(contentsOf: pidFileURL, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
+           let pid = Int32(pidString) {
+            if kill(pid, 0) != 0 {
+                // Process is dead, remove stale PID
+                try? FileManager.default.removeItem(at: pidFileURL)
+                print("Removed stale PID file for dead process \(pid)")
+                self.isRunning = false
+            } else {
+                print("Daemon already running with PID \(pid)")
+                self.isRunning = true
+                return
+            }
+        } else {
+            self.isRunning = false
+        }
+        
         guard !isRunning else { return }
         
         guard FileManager.default.fileExists(atPath: pythonPath.path) else {
@@ -48,7 +65,7 @@ class DaemonManager: ObservableObject {
         
         let proc = Process()
         proc.executableURL = pythonPath
-        proc.arguments = ["-m", "src.core"]
+        proc.arguments = ["-m", "src.core", "--no-face"]
         proc.currentDirectoryURL = workingDirectory
         
         // Provide standard macOS environment paths

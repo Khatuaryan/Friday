@@ -54,6 +54,8 @@ class ActivationHandler:
         self._tts = None
         self._voice_pipeline = None
         self.ipc_bridge = None
+        self._passive_listen_thread = None
+        self._passive_listen_abort = None
 
     @property
     def state(self) -> ActivationState:
@@ -134,6 +136,33 @@ class ActivationHandler:
         self._set_state(ActivationState.LISTENING)
         logger.info("Activation handler started — listening for wake word")
 
+    def _abort_passive_listen(self) -> None:
+        """Abort and join the background passive follow-up listen thread if active."""
+        if hasattr(self, "_passive_listen_abort") and self._passive_listen_abort:
+            self._passive_listen_abort.set()
+        if hasattr(self, "_passive_listen_thread") and self._passive_listen_thread:
+            self._passive_listen_thread.join(timeout=1.0)
+            self._passive_listen_thread = None
+            self._passive_listen_abort = None
+
+    def _run_passive_listen(self) -> None:
+        """Runs short passive listen session on background thread for smart follow-up."""
+        try:
+            logger.debug("Smart follow-up active listening thread started...")
+            listen_result = self._stt.listen(timeout=3.0, abort_event=self._passive_listen_abort)
+            if self._passive_listen_abort and self._passive_listen_abort.is_set():
+                return
+
+            if isinstance(listen_result, tuple):
+                transcript, detected_lang = listen_result
+            else:
+                transcript, detected_lang = listen_result, "en"
+
+            if transcript and self.context_manager.is_followup_eligible(transcript):
+                self._event_queue.put(("follow_up", transcript))
+        except Exception as e:
+            logger.error("Smart follow-up passive listen failed: %s", e)
+
     def run_loop(self) -> None:
         """
         Main execution loop. MUST BE CALLED FROM THE MAIN THREAD.
@@ -146,7 +175,18 @@ class ActivationHandler:
                     # Non-blocking check for events with small timeout to allow smooth UI updates
                     event = self._event_queue.get(timeout=0.02)
                     if event == "wake_word":
+                        self._abort_passive_listen()
                         self._handle_activation()
+                    elif isinstance(event, tuple) and event[0] == "follow_up":
+                        transcript = event[1]
+                        self._abort_passive_listen()
+                        if (
+                            self._state == ActivationState.LISTENING
+                            and self.context_manager.is_followup_window_active()
+                        ):
+                            logger.info("🔥 Smart follow-up triggered: '%s'", transcript)
+                            self._set_state(ActivationState.PROCESSING)
+                            self._handle_direct_voice_interaction(transcript)
                 except queue.Empty:
                     pass
 
@@ -155,22 +195,14 @@ class ActivationHandler:
                     self._state == ActivationState.LISTENING
                     and self.context_manager.is_followup_window_active()
                 ):
-                    try:
-                        # Short passive listen session
-                        logger.debug("Smart follow-up active listening...")
-                        listen_result = self._stt.listen(timeout=3.0)
-                        if isinstance(listen_result, tuple):
-                            transcript, detected_lang = listen_result
-                        else:
-                            transcript, detected_lang = listen_result, "en"
-
-                        if transcript and self.context_manager.is_followup_eligible(transcript):
-                            logger.info("🔥 Smart follow-up triggered: '%s'", transcript)
-                            
-                            self._set_state(ActivationState.PROCESSING)
-                            self._handle_direct_voice_interaction(transcript)
-                    except Exception as e:
-                        logger.error("Smart follow-up passive listen failed: %s", e)
+                    if not self._passive_listen_thread or not self._passive_listen_thread.is_alive():
+                        self._passive_listen_abort = threading.Event()
+                        self._passive_listen_thread = threading.Thread(
+                            target=self._run_passive_listen,
+                            name="friday-passive-listen",
+                            daemon=True
+                        )
+                        self._passive_listen_thread.start()
 
                 # Update the Tkinter overlay frame on the main thread if active
                 if hasattr(self, "overlay") and self.overlay:
@@ -181,6 +213,7 @@ class ActivationHandler:
     def stop(self) -> None:
         """Stop all activation components."""
         self._running = False
+        self._abort_passive_listen()
         if self._wake_word:
             self._wake_word.stop()
         if self._tts:
@@ -201,6 +234,10 @@ class ActivationHandler:
         ):
             logger.info("Wake word detected during active interaction. Preempting immediately!")
             self._tts.stop()
+
+        # Signal abort early to background passive listen so it frees the microphone
+        if hasattr(self, "_passive_listen_abort") and self._passive_listen_abort:
+            self._passive_listen_abort.set()
 
         self._event_queue.put("wake_word")
 
@@ -270,10 +307,10 @@ class ActivationHandler:
         try:
             if self._tts:
                 self._tts.reset_preempt()
-            self._set_state(ActivationState.SPEAKING)
-            self._tts.speak("Hey Boss, how can I help?", blocking=True)
 
-            self._set_state(ActivationState.PROCESSING)
+            # Set state to READY so that the listening animation plays while recording speech.
+            self._set_state(ActivationState.READY)
+            
             result = self._voice_pipeline.process_voice_command(timeout=10, return_tuple=True)
 
             if isinstance(result, tuple):
