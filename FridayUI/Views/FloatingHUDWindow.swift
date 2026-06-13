@@ -45,8 +45,8 @@ struct FloatingHUDWindow: View {
             }
         }
         .frame(width: 280, height: 360, alignment: .top)
-        .onChange(of: ipc.state) { newState in
-            updateMouseEvents(for: newState)
+        .onChange(of: ipc.state) { oldValue, newValue in
+            updateMouseEvents(for: newValue)
         }
         .onAppear {
             updateMouseEvents(for: ipc.state)
