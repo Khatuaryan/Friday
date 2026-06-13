@@ -191,18 +191,21 @@ class ActivationHandler:
                     pass
 
                 # Check for smart follow-up activation
-                if (
-                    self._state == ActivationState.LISTENING
-                    and self.context_manager.is_followup_window_active()
-                ):
-                    if not self._passive_listen_thread or not self._passive_listen_thread.is_alive():
-                        self._passive_listen_abort = threading.Event()
-                        self._passive_listen_thread = threading.Thread(
-                            target=self._run_passive_listen,
-                            name="friday-passive-listen",
-                            daemon=True
-                        )
-                        self._passive_listen_thread.start()
+                if self._state == ActivationState.LISTENING:
+                    if self.context_manager.is_followup_window_active():
+                        if not self._passive_listen_thread or not self._passive_listen_thread.is_alive():
+                            self._passive_listen_abort = threading.Event()
+                            self._passive_listen_thread = threading.Thread(
+                                target=self._run_passive_listen,
+                                name="friday-passive-listen",
+                                daemon=True
+                            )
+                            self._passive_listen_thread.start()
+                    else:
+                        # Follow-up window inactive: make sure wake word detector is running!
+                        if self._wake_word and not self._wake_word.running:
+                            logger.debug("Follow-up window inactive: starting wake word detector...")
+                            self._wake_word.start()
 
                 # Update the Tkinter overlay frame on the main thread if active
                 if hasattr(self, "overlay") and self.overlay:
@@ -380,6 +383,19 @@ class ActivationHandler:
             old_val = old.value if hasattr(old, "value") else str(old)
             new_val = new_state.value if hasattr(new_state, "value") else str(new_state)
             logger.debug("State: %s → %s", old_val, new_val)
+            
+            # Start or stop the wake word detector based on the state transition
+            if new_state != ActivationState.LISTENING:
+                if self._wake_word and self._wake_word.running:
+                    logger.debug("Stopping wake word detector due to state change to %s", new_val)
+                    self._wake_word.stop()
+            else:
+                # Returning to LISTENING state: only start if follow-up is inactive
+                if not self.context_manager.is_followup_window_active():
+                    if self._wake_word and not self._wake_word.running:
+                        logger.debug("Starting wake word detector due to state change to LISTENING")
+                        self._wake_word.start()
+
             if self.ipc_bridge:
                 self.ipc_bridge.write_status(new_val)
             

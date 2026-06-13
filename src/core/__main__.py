@@ -39,19 +39,27 @@ _shutdown_event = threading.Event()
 def _handle_sigint(signum, frame):
     """Ctrl+C — graceful shutdown."""
     logger.info("SIGINT received — shutting down gracefully...")
-    _shutdown_event.set()
-    if _handler:
-        _handler.stop()
-    sys.exit(0)
+    try:
+        pid_file = Path("~/.cache/friday/friday.pid").expanduser()
+        if pid_file.exists():
+            pid_file.unlink()
+    except Exception:
+        pass
+    import os
+    os._exit(0)
 
 
 def _handle_sigterm(signum, frame):
     """launchctl stop / kill — graceful shutdown."""
     logger.info("SIGTERM received — shutting down gracefully...")
-    _shutdown_event.set()
-    if _handler:
-        _handler.stop()
-    sys.exit(0)
+    try:
+        pid_file = Path("~/.cache/friday/friday.pid").expanduser()
+        if pid_file.exists():
+            pid_file.unlink()
+    except Exception:
+        pass
+    import os
+    os._exit(0)
 
 
 def _handle_sigusr1(signum, frame):
